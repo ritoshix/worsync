@@ -23,11 +23,12 @@ html {
     color: #38bdf8;
     cursor: pointer;
     text-decoration: underline dotted;
+    padding: 2px 4px;
+    border-radius: 4px;
 }
-
 .clickable-chord:hover {
     color: #7dd3fc;
-    background-color: rgba(56, 189, 248, 0.1);
+    background-color: rgba(56, 189, 248, 0.2);
 }
 
 @keyframes glowing {
