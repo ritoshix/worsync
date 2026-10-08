@@ -47,7 +47,19 @@ const defaultSongs = [
 window.addEventListener('DOMContentLoaded', () => {
     loadSongsFromLocalStorage();
     initGlobalCloudLibrary();
+    setupGlobalListeners();
 });
+
+function setupGlobalListeners() {
+    const chordModal = document.getElementById('chordModal');
+    if(chordModal) {
+        chordModal.addEventListener('click', (e) => {
+            if(e.target === chordModal) {
+                window.closeChordModal();
+            }
+        });
+    }
+}
 
 function loadSongsFromLocalStorage() {
     const localData = localStorage.getItem('worsync_songs');
@@ -163,6 +175,7 @@ window.manualSyncCloud = async () => {
     }
 }
 
+// Transpose Key Function na nag-a-update ng key label at ng mga chords
 window.transposeKey = (direction) => {
     if(!currentSong) return;
     currentTransposeOffset = (currentTransposeOffset + direction + 12) % 12;
@@ -172,9 +185,10 @@ window.transposeKey = (direction) => {
     let idx = noteList.indexOf(baseKey);
     if(idx === -1) idx = notesSharp.indexOf(baseKey);
     if(idx === -1) idx = 0;
-    
+
     let newKeyIdx = (idx + currentTransposeOffset) % 12;
     document.getElementById('currentKey').innerText = noteList[newKeyIdx];
+    
     renderSongContent();
 }
 
@@ -372,6 +386,7 @@ function updateSharedSyncUI() {
         if(isHost) {
             hostBtn.className = "bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-1 rounded transition";
             hostBtn.innerText = "Broadcast Sync Mode: ON";
+            lyricsCard.classList.add('host-sync-glow');
         } else {
             lyricsCard.classList.add('host-sync-glow');
             statusText.innerText = "Host Sync: ON (Locked)";
@@ -382,6 +397,7 @@ function updateSharedSyncUI() {
         if(isHost) {
             hostBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold text-[10px] px-2.5 py-1 rounded transition";
             hostBtn.innerText = "Broadcast Sync Mode: OFF (Free Scroll)";
+            lyricsCard.classList.remove('host-sync-glow');
         } else {
             lyricsCard.classList.remove('host-sync-glow');
             statusText.innerText = "Host Sync: OFF (Free Scroll)";
@@ -532,13 +548,14 @@ function renderSongContent() {
 
 function formatClickableChordsInText(text) {
     return text.replace(/([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g, match => {
-        return `<span class="clickable-chord" onclick="event.stopPropagation(); showChordModal('${match}')">${match}</span>`;
+        return `<span class="clickable-chord" onclick="event.stopPropagation(); window.showChordModal('${match}')">${match}</span>`;
     });
 }
 
 window.showChordModal = (chordName) => {
-    document.getElementById('modalChordTitle').innerText = chordName;
-    let diag = chordDiagrams[chordName] || `    I  II III\ne |--|--|--|\nB |--|--|--|\nG |--|--|--|\nD |--|--|--|\nA |--|--|--|\nE |--|--|--|\n(Standard Position)`;
+    let cleanChord = chordName.trim();
+    document.getElementById('modalChordTitle').innerText = cleanChord;
+    let diag = chordDiagrams[cleanChord] || `    I  II III\ne |--|--|--|\nB |--|--|--|\nG |--|--|--|\nD |--|--|--|\nA |--|--|--|\nE |--|--|--|\n(Standard Position)`;
     document.getElementById('modalChordDiagram').innerText = diag;
     document.getElementById('chordModal').classList.remove('hidden');
 }
