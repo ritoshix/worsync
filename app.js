@@ -21,9 +21,8 @@ let cloudSongsLibrary = [];
 let personalSetlist = [];   
 let currentSong = null;
 let currentTransposeOffset = 0;
-let personalCapoOffset = 0; // Feature 2
+let personalCapoOffset = 0;
 
-// Auto-Scroll state (Feature 1)
 let isAutoScrolling = false;
 let autoScrollInterval = null;
 let participantId = 'user_' + Math.random().toString(36).substring(2, 9);
@@ -34,10 +33,9 @@ const notesFlat  = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", 
 window.addEventListener('DOMContentLoaded', () => {
     loadPersonalSetlist();
     initGlobalCloudLibrary();
-    registerServiceWorker(); // Feature 4
+    registerServiceWorker();
 });
 
-// Feature 4: Register Service Worker for offline caching
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
@@ -83,7 +81,6 @@ function updateArtistSuggestions() {
     });
 }
 
-// Data saver: Loads cloud library from localStorage cache first if offline
 async function initGlobalCloudLibrary() {
     const cachedCloud = localStorage.getItem('worsync_cloud_cache');
     if(cachedCloud) {
@@ -100,7 +97,7 @@ async function initGlobalCloudLibrary() {
         });
         localStorage.setItem('worsync_cloud_cache', JSON.stringify(cloudSongsLibrary));
     } catch(err) {
-        console.log("Offline mode: Using cached cloud songbook data.");
+        console.log("Offline mode: Using cached cloud data.");
     }
 
     onSnapshot(collection(db, "songsLibrary"), (snapshot) => {
@@ -249,14 +246,12 @@ window.removeSongFromSetlist = async (event, songId) => {
     }
 }
 
-// Feature 2: Personal Capo Transpose Control
 window.adjustCapo = (direction) => {
     personalCapoOffset = (personalCapoOffset + direction + 12) % 12;
     document.getElementById('capoDisplay').innerText = personalCapoOffset;
     renderSongContent();
 }
 
-// Feature 3: High Contrast Stage Mode Toggle
 window.toggleStageMode = () => {
     const body = document.getElementById('appBody');
     const btn = document.getElementById('stageModeBtn');
@@ -270,7 +265,6 @@ window.toggleStageMode = () => {
     }
 }
 
-// Feature 1: Auto-Scroll Metronome Toggle
 window.toggleAutoScroll = () => {
     isAutoScrolling = !isAutoScrolling;
     const btn = document.getElementById('autoScrollBtn');
@@ -278,18 +272,17 @@ window.toggleAutoScroll = () => {
 
     if(isAutoScrolling) {
         btn.className = "bg-rose-600 hover:bg-rose-500 text-white font-bold px-2 py-0.5 rounded text-[10px]";
-        btn.innerText = "Stop Scroll";
+        btn.innerText = "Stop";
         autoScrollInterval = setInterval(() => {
             container.scrollBy({ top: 1, behavior: 'smooth' });
-        }, 80); // Smooth scroll tick speed
+        }, 80);
     } else {
         btn.className = "bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded text-[10px]";
-        btn.innerText = "Start Scroll";
+        btn.innerText = "Start";
         clearInterval(autoScrollInterval);
     }
 }
 
-// Feature 5: QR Code Room Sharing Modal
 window.showRoomQR = () => {
     if(!currentRoomId) return;
     const qrModal = document.getElementById('qrModal');
@@ -297,7 +290,6 @@ window.showRoomQR = () => {
     const qrText = document.getElementById('qrRoomCodeText');
     
     qrText.innerText = `Room Code: ${currentRoomId}`;
-    // Using a public QR generator API for instant lightweight QR creation
     qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentRoomId)}&bgcolor=1e293b&color=f59e0b`;
     qrModal.classList.remove('hidden');
 }
@@ -390,11 +382,17 @@ window.joinRoomAsParticipant = async () => {
     initParticipantPresence();
 };
 
-// Participant count presence tracking
 function initParticipantPresence() {
     if(!currentRoomId) return;
     const pRef = doc(db, "jamRooms", currentRoomId, "participants", participantId);
     setDoc(pRef, { joinedAt: new Date(), isHost: isHost }, { merge: true });
+
+    const cleanupPresence = () => {
+        deleteDoc(pRef).catch(() => {});
+    };
+
+    window.addEventListener('beforeunload', cleanupPresence);
+    window.addEventListener('pagehide', cleanupPresence);
 
     onSnapshot(collection(db, "jamRooms", currentRoomId, "participants"), (snapshot) => {
         const count = snapshot.size;
@@ -403,10 +401,20 @@ function initParticipantPresence() {
     });
 }
 
+window.leaveRoomAndRefresh = async () => {
+    if(currentRoomId) {
+        try {
+            const pRef = doc(db, "jamRooms", currentRoomId, "participants", participantId);
+            await deleteDoc(pRef);
+        } catch(e) {}
+    }
+    location.reload();
+}
+
 function setupUI() {
     document.getElementById('roomSetupScreen').classList.add('hidden');
     document.getElementById('activeRoomDisplay').innerText = `Room: ${currentRoomId}`;
-    document.getElementById('metronomeContainer').classList.remove('hidden'); // Show metronome
+    document.getElementById('metronomeContainer').classList.remove('hidden');
     
     const badge = document.getElementById('roleBadge');
     const followModeBtn = document.getElementById('followModeSyncBtn');
@@ -706,7 +714,7 @@ function renderSongContent() {
         container.appendChild(div);
 
         const hBtn = document.createElement('button');
-        hBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1 rounded text-[11px] font-medium uppercase text-left truncate transition";
+        hBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded text-xs font-medium uppercase whitespace-nowrap transition shrink-0";
         hBtn.innerText = secName;
         hBtn.onclick = () => updateHostState(secName);
         hostButtonsContainer.appendChild(hBtn);
