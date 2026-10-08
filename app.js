@@ -17,12 +17,15 @@ const db = getFirestore(app);
 let currentRoomId = "";
 let isHost = false;
 let hostForceFollow = true;
+let isDrummerMode = false;
 let cloudSongsLibrary = []; 
 let personalSetlist = [];   
 let currentSong = null;
 let currentTransposeOffset = 0;
 let personalCapoOffset = 0;
+let currentSongBpm = 120;
 
+let metronomeTimer = null;
 let isAutoScrolling = false;
 let autoScrollInterval = null;
 let participantId = 'user_' + Math.random().toString(36).substring(2, 9);
@@ -56,6 +59,7 @@ function loadPersonalSetlist() {
     if(personalSetlist.length > 0) {
         currentSong = personalSetlist[0];
         currentTransposeOffset = 0;
+        currentSongBpm = currentSong.bpm || 120;
         renderSongContent();
     }
     renderSetlistUI();
@@ -158,7 +162,7 @@ function renderCloudBrowserList(list) {
         const isInSetlist = personalSetlist.some(s => s.id === song.id);
         const item = document.createElement('div');
         item.className = "bg-slate-900 border border-slate-700 p-2.5 rounded flex justify-between items-center text-xs";
-        item.innerHTML = `<div><p class="font-bold text-white">${song.title}</p><p class="text-slate-400 text-[10px]">${song.artist} • Key: <span class="text-amber-400">${song.key || 'C'}</span></p></div>`;
+        item.innerHTML = `<div><p class="font-bold text-white">${song.title}</p><p class="text-slate-400 text-[10px]">${song.artist} • Key: <span class="text-amber-400">${song.key || 'C'}</span> • BPM: <span class="text-emerald-400">${song.bpm || 120}</span></p></div>`;
 
         const btn = document.createElement('button');
         if(isInSetlist) {
@@ -232,6 +236,22 @@ window.toggleStageMode = () => {
     btn.innerText = body.classList.contains('stage-mode') ? "⚡ Stage Active" : "💡 Stage Mode";
 }
 
+window.toggleDrummerMode = () => {
+    isDrummerMode = !isDrummerMode;
+    const body = document.getElementById('appBody');
+    const btn = document.getElementById('drummerModeBtn');
+    
+    body.classList.toggle('drummer-mode', isDrummerMode);
+    if(isDrummerMode) {
+        btn.className = "bg-emerald-600 text-white font-bold text-xs px-2.5 py-1.5 rounded transition";
+        btn.innerText = "🥁 Drummer Active";
+    } else {
+        btn.className = "bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-2.5 py-1.5 rounded font-medium transition";
+        btn.innerText = "🥁 Drummer Mode";
+    }
+}
+
+// Auto-Scroll Toggle Function
 window.toggleAutoScroll = () => {
     isAutoScrolling = !isAutoScrolling;
     const btn = document.getElementById('autoScrollBtn');
@@ -240,7 +260,10 @@ window.toggleAutoScroll = () => {
     if(isAutoScrolling) {
         btn.className = "bg-rose-600 hover:bg-rose-500 text-white font-bold px-2 py-0.5 rounded text-[10px]";
         btn.innerText = "Stop";
-        autoScrollInterval = setInterval(() => container.scrollBy({ top: 1, behavior: 'smooth' }), 80);
+        let scrollSpeed = Math.max(30, Math.floor(12000 / currentSongBpm)); 
+        autoScrollInterval = setInterval(() => {
+            container.scrollBy({ top: 1, behavior: 'smooth' });
+        }, scrollSpeed);
     } else {
         btn.className = "bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded text-[10px]";
         btn.innerText = "Start";
@@ -272,6 +295,34 @@ window.changeRoomTranspose = async (direction) => {
         currentTransposeOffset = newOffset;
         renderSongContent();
     }
+}
+
+window.updateRoomBpm = async (newBpm) => {
+    if(!isHost || !currentRoomId) return;
+    let parsedBpm = parseInt(newBpm) || 120;
+    currentSongBpm = parsedBpm;
+    
+    startVisualMetronome(parsedBpm);
+    await updateDoc(doc(db, "jamRooms", currentRoomId), {
+        songBpm: parsedBpm,
+        updatedAt: new Date()
+    });
+}
+
+function startVisualMetronome(bpm) {
+    if(metronomeTimer) clearInterval(metronomeTimer);
+    const intervalMs = (60 / bpm) * 1000;
+    const flasher = document.getElementById('visualMetronomeFlasher');
+    const dot = document.getElementById('metronomePulseDot');
+    
+    if(flasher) flasher.classList.remove('hidden');
+
+    metronomeTimer = setInterval(() => {
+        if(!dot) return;
+        dot.classList.remove('beat-pulse');
+        void dot.offsetWidth;
+        dot.classList.add('beat-pulse');
+    }, intervalMs);
 }
 
 function transposeRawText(text, semitones) {
@@ -308,6 +359,7 @@ window.createRoomAsHost = async () => {
         activeSection: getFirstSectionKey(currentSong),
         hostForceFollow: true,
         transposeOffset: 0,
+        songBpm: currentSongBpm,
         setlist: personalSetlist.map(s => s.id),
         updatedAt: new Date()
     }, { merge: true });
@@ -325,11 +377,9 @@ window.joinRoomAsParticipant = async () => {
     isHost = false;
 
     try {
-        const roomRef = doc(db, "jamRooms", currentRoomId);
-        const snap = await getDoc(roomRef);
-        
+        const snap = await getDoc(doc(db, "jamRooms", currentRoomId));
         if(!snap.exists()) {
-            alert("Room Code not found or session has already ended. Please check the code with your Host.");
+            alert("Room Code not found or session has already ended.");
             currentRoomId = "";
             return;
         }
@@ -338,7 +388,7 @@ window.joinRoomAsParticipant = async () => {
         startListening();
         initParticipantPresence();
     } catch(err) {
-        alert("Unable to connect to the room. Please check your network connection and try again.");
+        alert("Unable to connect to the room.");
     }
 };
 
@@ -378,13 +428,8 @@ window.leaveRoomAndRefresh = async () => {
     if(currentRoomId) {
         try {
             clearInterval(heartbeatTimer);
-            if(isHost) {
-                const roomRef = doc(db, "jamRooms", currentRoomId);
-                await deleteDoc(roomRef);
-            } else {
-                const pRef = doc(db, "jamRooms", currentRoomId, "participants", participantId);
-                await deleteDoc(pRef);
-            }
+            if(isHost) await deleteDoc(doc(db, "jamRooms", currentRoomId));
+            else await deleteDoc(doc(db, "jamRooms", currentRoomId, "participants", participantId));
         } catch(e) {}
     }
     location.reload();
@@ -394,6 +439,7 @@ function setupUI() {
     document.getElementById('roomSetupScreen').classList.add('hidden');
     document.getElementById('activeRoomDisplay').innerText = `Room: ${currentRoomId}`;
     document.getElementById('metronomeContainer').classList.remove('hidden');
+    document.getElementById('drummerModeBtn').classList.remove('hidden');
     
     document.getElementById('roleBadge').innerText = isHost ? "Mode: HOST" : "Mode: Participant";
     document.getElementById('roleBadge').className = isHost ? "text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-1 rounded font-semibold" : "text-xs bg-slate-700 px-2 py-1 rounded text-slate-300";
@@ -401,6 +447,9 @@ function setupUI() {
     document.getElementById('followModeSyncBtn').classList.toggle('hidden', !isHost);
     document.getElementById('floatingHostController').classList.toggle('hidden', !isHost);
     document.getElementById('participantStatusBadge').style.display = isHost ? 'none' : 'flex';
+
+    const bpmInput = document.getElementById('currentBpmInput');
+    if(bpmInput) bpmInput.disabled = !isHost;
 }
 
 function startListening() {
@@ -418,11 +467,19 @@ function startListening() {
             if(data.transposeOffset !== undefined) {
                 currentTransposeOffset = data.transposeOffset;
             }
+            if(data.songBpm !== undefined && data.songBpm !== currentSongBpm) {
+                currentSongBpm = data.songBpm;
+                document.getElementById('currentBpmInput').value = currentSongBpm;
+                startVisualMetronome(currentSongBpm);
+            }
             if(data.currentSongId && (!currentSong || currentSong.id !== data.currentSongId)) {
                 let found = personalSetlist.find(s => s.id === data.currentSongId) || cloudSongsLibrary.find(s => s.id === data.currentSongId);
                 if(found) { 
                     currentSong = found; 
                     currentTransposeOffset = data.transposeOffset || 0; 
+                    currentSongBpm = found.bpm || 120;
+                    document.getElementById('currentBpmInput').value = currentSongBpm;
+                    startVisualMetronome(currentSongBpm);
                     renderSetlistUI(); 
                     renderSongContent(); 
                 }
@@ -431,9 +488,8 @@ function startListening() {
             }
             if(data.activeSection) highlightSection(data.activeSection);
         } else {
-            // If the room was deleted by the host while active
             if(!isHost) {
-                alert("The Host has ended the session. Returning to setup screen.");
+                alert("The Host has ended the session.");
                 location.reload();
             }
         }
@@ -445,13 +501,18 @@ window.selectSong = async (songId) => {
     if(found) {
         currentSong = found;
         currentTransposeOffset = 0;
+        currentSongBpm = found.bpm || 120;
+        document.getElementById('currentBpmInput').value = currentSongBpm;
+        startVisualMetronome(currentSongBpm);
         renderSetlistUI();
         renderSongContent();
+
         if(isHost && currentRoomId) {
             await updateDoc(doc(db, "jamRooms", currentRoomId), {
                 currentSongId: songId,
                 activeSection: getFirstSectionKey(currentSong),
                 transposeOffset: 0,
+                songBpm: currentSongBpm,
                 updatedAt: new Date()
             });
         }
@@ -524,7 +585,7 @@ function renderSetlistUI() {
             const isSelected = currentSong && currentSong.id === song.id;
             const btn = document.createElement('button');
             btn.className = `w-full text-left px-3 py-1.5 rounded text-xs transition flex justify-between items-center ${isSelected ? 'bg-amber-500/20 text-amber-400 font-semibold border-l-4 border-amber-500' : 'hover:bg-slate-700/50 text-slate-300'}`;
-            btn.innerHTML = `<span>${song.title}</span><div class="flex items-center gap-1.5"><span class="text-[9px] font-mono bg-slate-800 px-1 py-0.5 rounded text-amber-400/80 border border-slate-700">${song.key || 'C'}</span>${isHost ? `<span class="text-rose-400 hover:text-rose-300 font-bold px-1 text-[11px]" title="Remove">✕</span>` : ''}</div>`;
+            btn.innerHTML = `<span>${song.title}</span><div class="flex items-center gap-1.5"><span class="text-[9px] font-mono bg-slate-800 px-1 py-0.5 rounded text-emerald-400 border border-slate-700">${song.bpm || 120}bpm</span><span class="text-[9px] font-mono bg-slate-800 px-1 py-0.5 rounded text-amber-400/80 border border-slate-700">${song.key || 'C'}</span>${isHost ? `<span class="text-rose-400 hover:text-rose-300 font-bold px-1 text-[11px]" title="Remove">✕</span>` : ''}</div>`;
             
             if(isHost) {
                 btn.querySelector('.text-rose-400').onclick = (e) => removeSongFromSetlist(e, song.id);
@@ -611,12 +672,13 @@ window.saveNewSongToCloud = async () => {
     const artist = document.getElementById('newSongArtist').value.trim();
     const title = document.getElementById('newSongTitle').value.trim();
     const key = document.getElementById('newSongKey').value.trim().toUpperCase() || 'C';
+    const bpm = parseInt(document.getElementById('newSongBpm').value) || 120;
     const text = document.getElementById('newSongText').value.trim();
 
     if(!artist || !title || !text) return alert("Please fill in Artist, Title, and Text!");
 
     const songId = title.toLowerCase().replace(/[^a-z0-9]/g, '_') + "_" + Math.floor(Math.random() * 1000);
-    const newSongData = { id: songId, title, artist, key, text };
+    const newSongData = { id: songId, title, artist, key, bpm, text };
 
     cloudSongsLibrary.push(newSongData);
     personalSetlist.push(newSongData);
@@ -641,5 +703,6 @@ window.saveNewSongToCloud = async () => {
     document.getElementById('newSongArtist').value = '';
     document.getElementById('newSongTitle').value = '';
     document.getElementById('newSongKey').value = '';
+    document.getElementById('newSongBpm').value = '120';
     document.getElementById('newSongText').value = '';
 }
