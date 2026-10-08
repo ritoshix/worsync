@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorSync Chords - PWA</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html { scroll-behavior: smooth; }
+        .section-card { cursor: pointer; transition: all 0.2s ease-in-out; }
+        
+        @keyframes glowing {
+            0% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.2), inset 0 0 5px rgba(16, 185, 129, 0.1); }
+            50% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.6), inset 0 0 12px rgba(16, 185, 129, 0.3); }
+            100% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.2), inset 0 0 5px rgba(16, 185, 129, 0.1); }
+        }
+        .host-sync-glow {
+            animation: glowing 2.5s infinite;
+            border-color: rgba(16, 185, 129, 0.8) !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+
+    <!-- ROOM SETUP SCREEN -->
+    <div id="roomSetupScreen" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl max-w-md w-full shadow-2xl space-y-5">
+            <div>
+                <h2 class="text-2xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">WorSync Session 🎸</h2>
+                <p class="text-xs text-slate-400 mt-1">Host a jamming session or join an existing room.</p>
+            </div>
+            
+            <div class="space-y-4 pt-2">
+                <!-- Host Section -->
+                <div class="bg-slate-900/60 p-4 rounded-lg border border-slate-700/60 space-y-3">
+                    <p class="text-xs font-semibold text-amber-400 uppercase tracking-wider">For Host (Controller)</p>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Create your Room Code</label>
+                        <input type="text" id="hostCodeInput" placeholder="e.g. WORSHIP1" class="w-full bg-slate-900 border border-slate-700 rounded p-2.5 text-sm uppercase font-mono tracking-wider text-amber-400 focus:outline-none focus:border-amber-500">
+                    </div>
+                    <button onclick="createRoomAsHost()" class="w-full bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold py-2.5 px-4 rounded text-xs transition">
+                        Create Room as Host
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-center">
+                    <span class="text-xs text-slate-500 uppercase font-bold tracking-widest">Or</span>
+                </div>
+
+                <!-- Participant Section -->
+                <div class="bg-slate-900/60 p-4 rounded-lg border border-slate-700/60 space-y-3">
+                    <p class="text-xs font-semibold text-indigo-400 uppercase tracking-wider">For Participant (Follower)</p>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Enter Host's Room Code</label>
+                        <input type="text" id="participantCodeInput" placeholder="e.g. WORSHIP1" class="w-full bg-slate-900 border border-slate-700 rounded p-2.5 text-sm uppercase font-mono tracking-wider text-indigo-400 focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <button onclick="joinRoomAsParticipant()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-4 rounded text-xs transition">
+                        Join Room
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD SONG MODAL -->
+    <div id="addSongModal" class="fixed inset-0 bg-slate-950/80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-lg font-bold text-amber-400">Add Song to Global Cloud Library</h3>
+            <p class="text-xs text-slate-400">This song will be saved to your local storage and uploaded to the public cloud for everyone.</p>
+            
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">Song Title</label>
+                    <input type="text" id="newSongTitle" placeholder="e.g. Way Maker" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Artist / Band</label>
+                    <input type="text" id="newSongArtist" placeholder="e.g. Sinach" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Key (Original Key)</label>
+                    <input type="text" id="newSongKey" placeholder="e.g. E" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white uppercase">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Verse 1 (Chords & Lyrics)</label>
+                    <textarea id="newSongVerse1" rows="3" placeholder="E        B&#10;You are here moving in our midst..." class="w-full bg-slate-900 border border-slate-700 rounded p-2 font-mono text-white"></textarea>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Chorus (Chords & Lyrics)</label>
+                    <textarea id="newSongChorus" rows="3" placeholder="A        E&#10;Way Maker, Miracle Worker..." class="w-full bg-slate-900 border border-slate-700 rounded p-2 font-mono text-white"></textarea>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeAddSongModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2 rounded text-xs font-medium">Cancel</button>
+                <button onclick="saveNewSongToCloud()" class="bg-amber-600 hover:bg-amber-500 text-slate-950 px-4 py-2 rounded text-xs font-bold">Save & Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HEADER / NAVIGATION -->
+    <header class="bg-slate-800 border-b border-slate-700 p-4 sticky top-0 z-40 flex flex-wrap justify-between items-center gap-2">
+        <div class="flex items-center space-x-2">
+            <span class="text-xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">WorSync 🎸</span>
+            <span id="roleBadge" class="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Mode: -</span>
+            <span id="activeRoomDisplay" class="text-xs font-mono bg-slate-900 px-2 py-1 rounded text-amber-400">Room: --</span>
+        </div>
+        
+        <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center bg-slate-700 rounded px-2 py-1 text-sm">
+                <span class="mr-1 text-xs text-slate-400">Key:</span>
+                <span id="currentKey" class="mx-1 font-bold text-amber-400">C</span>
+            </div>
+
+            <div id="participantStatusBadge" class="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5">
+                <span id="statusDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span id="statusText">Host Sync: ON</span>
+            </div>
+
+            <button onclick="location.reload()" class="bg-rose-600 hover:bg-rose-500 text-xs px-3 py-1.5 rounded font-medium transition">
+                Leave
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-1 max-w-4xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+        
+        <!-- SIDEBAR / PUBLIC CLOUD LIBRARY & SEARCH -->
+        <aside class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 md:col-span-1 flex flex-col justify-between gap-3">
+            <div class="space-y-3 flex flex-col h-full">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Songbook</h2>
+                    <button onclick="manualSyncCloud()" class="bg-slate-700 hover:bg-slate-600 text-amber-400 border border-amber-500/30 text-[10px] px-2 py-1 rounded font-medium transition flex items-center gap-1" title="Check Cloud & Sync to LocalStorage">
+                        <span>🔄 Sync Cloud</span>
+                    </button>
+                </div>
+                
+                <div>
+                    <input type="text" id="searchSongInput" oninput="filterSongs()" placeholder="🔍 Search title or artist..." class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:outline-none focus:border-amber-500">
+                </div>
+
+                <div id="songList" class="flex flex-col gap-2 overflow-y-auto max-h-[45vh] pr-1"></div>
+            </div>
+
+            <button onclick="openAddSongModal()" class="w-full bg-slate-700 hover:bg-slate-600 text-amber-400 border border-amber-500/30 text-xs py-2 rounded font-medium transition flex items-center justify-center gap-1 mt-2">
+                <span>➕ Upload New Song</span>
+            </button>
+        </aside>
+
+        <!-- LYRICS & CHORDS DISPLAY AREA -->
+        <section id="lyricsCardSection" class="bg-slate-800 border border-slate-700 rounded-xl p-6 md:col-span-3 flex flex-col justify-between shadow-xl transition-all duration-300 host-sync-glow">
+            <div>
+                <div class="border-b border-slate-700 pb-4 mb-4">
+                    <h1 id="songTitle" class="text-2xl font-bold text-white">-</h1>
+                    <p id="songArtist" class="text-sm text-slate-400">-</p>
+                </div>
+
+                <div id="lyricsContainer" class="space-y-4 font-mono text-base leading-relaxed overflow-y-auto max-h-[55vh] p-2">
+                    <!-- Sections -->
+                </div>
+            </div>
+
+            <!-- HOST CONTROLS PANEL -->
+            <div id="hostControls" class="mt-6 pt-4 border-t border-slate-700 hidden">
+                <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+                    <p class="text-xs text-amber-400 font-sans font-semibold">CONTROLLER PANEL:</p>
+                    <button id="hostLockToggleBtn" onclick="toggleHostLock()" class="bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-1 rounded transition">
+                        Broadcast Sync Mode: ON
+                    </button>
+                </div>
+                <div id="hostSectionButtons" class="flex flex-wrap gap-2 font-sans"></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- FIREBASE SDKs & APP LOGIC -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBOZIHmxS_CXwTAzt6dqnDf975BPyiD_uw",
+            authDomain: "worsync.firebaseapp.com",
+            projectId: "worsync",
+            storageBucket: "worsync.firebasestorage.app",
+            messagingSenderId: "895924376915",
+            appId: "1:895924376915:web:4b5976dd8babc37b3dbda6",
+            measurementId: "G-45FS4H1890"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let currentRoomId = "";
+        let isHost = false;
+        let hostForceFollow = true;
+        let songsLibrary = [];
+        let currentSong = null;
+
+        const defaultSongs = [
+            {
+                id: "torete",
+                title: "Torete",
+                artist: "Moonstar88",
+                key: "C",
+                sections: {
+                    verse1: "C          G\nTe narito ka na naman\nAm             F\nPinapawi ang luha sa aking mga mata",
+                    chorus: "C        G\nIsang tingin mo lang\nAm         F\nAking nasisigawan ang buong mundo",
+                    verse2: "C              G\nHindi ko alam ang gagawin\nAm           F\nKung sakaling mawala ka pa",
+                    bridge: "F              G\nAt kahit na anong sabihin nila\nAm             F\nIkaw ang nais ko..."
+                }
+            }
+        ];
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadSongsFromLocalStorage();
+            initGlobalCloudLibrary();
+        });
+
+        function loadSongsFromLocalStorage() {
+            const localData = localStorage.getItem('worsync_songs');
+            if(localData) {
+                try {
+                    songsLibrary = JSON.parse(localData);
+                    if(songsLibrary.length > 0) {
+                        currentSong = songsLibrary[0];
+                        renderSongList(songsLibrary);
+                        renderSongContent();
+                    }
+                } catch(e) { console.error(e); }
+            } else {
+                songsLibrary = defaultSongs;
+                localStorage.setItem('worsync_songs', JSON.stringify(songsLibrary));
+                currentSong = songsLibrary[0];
+                renderSongList(songsLibrary);
+                renderSongContent();
+            }
+        }
+
+        function saveSongsToLocalStorage() {
+            localStorage.setItem('worsync_songs', JSON.stringify(songsLibrary));
+        }
+
+        async function initGlobalCloudLibrary() {
+            try {
+                const querySnapshot = await getDocs(collection(db, "songsLibrary"));
+                let cloudSongs = [];
+                querySnapshot.forEach((doc) => {
+                    cloudSongs.push(doc.data());
+                });
+
+                if(cloudSongs.length > 0) {
+                    songsLibrary = cloudSongs;
+                    saveSongsToLocalStorage();
+                } else {
+                    for(let song of defaultSongs) {
+                        await setDoc(doc(db, "songsLibrary", song.id), song);
+                    }
+                }
+
+                if(!currentSong && songsLibrary.length > 0) {
+                    currentSong = songsLibrary[0];
+                }
+                renderSongList(songsLibrary);
+                renderSongContent();
+            } catch(err) {
+                console.log("Offline mode: Using LocalStorage cache.");
+            }
+
+            onSnapshot(collection(db, "songsLibrary"), (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    const updatedSong = change.doc.data();
+                    const index = songsLibrary.findIndex(s => s.id === updatedSong.id);
+                    if(index === -1) {
+                        songsLibrary.push(updatedSong);
+                    } else {
+                        songsLibrary[index] = updatedSong;
+                    }
+                    saveSongsToLocalStorage();
+                    filterSongs();
+
+                    if(currentSong && currentSong.id === updatedSong.id) {
+                        currentSong = updatedSong;
+                        renderSongContent();
+                    }
+                });
+            });
+        }
+
+        window.manualSyncCloud = async () => {
+            try {
+                const querySnapshot = await getDocs(collection(db, "songsLibrary"));
+                let cloudCount = 0;
+                
+                querySnapshot.forEach(async (document) => {
+                    const cloudSong = document.data();
+                    const exists = songsLibrary.find(s => s.id === cloudSong.id);
+                    if(!exists) {
+                        songsLibrary.push(cloudSong);
+                        cloudCount++;
+                    }
+                });
+
+                for(let localSong of songsLibrary) {
+                    await setDoc(doc(db, "songsLibrary", localSong.id), localSong);
+                }
+
+                saveSongsToLocalStorage();
+                renderSongList(songsLibrary);
+                alert(`Successfully synced! Added ${cloudCount} new song(s) from the Cloud.`);
+            } catch(e) {
+                alert("Sync failed. Please check your internet connection.");
+            }
+        }
+
+        window.createRoomAsHost = async () => {
+            const code = document.getElementById('hostCodeInput').value.trim().toUpperCase();
+            if(!code) return alert("Please enter a Room Code first!");
+            
+            currentRoomId = code;
+            isHost = true;
+            
+            const roomRef = doc(db, "jamRooms", currentRoomId);
+            await setDoc(roomRef, {
+                currentSongId: currentSong ? currentSong.id : "torete",
+                activeSection: "verse1",
+                hostForceFollow: true,
+                updatedAt: new Date()
+            }, { merge: true });
+
+            setupUI();
+            startListening();
+        };
+
+        window.joinRoomAsParticipant = async () => {
+            const code = document.getElementById('participantCodeInput').value.trim().toUpperCase();
+            if(!code) return alert("Please enter the Room Code provided by the Host!");
+
+            currentRoomId = code;
+            isHost = false;
+
+            const roomRef = doc(db, "jamRooms", currentRoomId);
+            const snap = await getDoc(roomRef);
+            if(!snap.exists()) {
+                alert("No active room found with this code!");
+                return;
+            }
+
+            setupUI();
+            startListening();
+        };
+
+        function setupUI() {
+            document.getElementById('roomSetupScreen').classList.add('hidden');
+            document.getElementById('activeRoomDisplay').innerText = `Room: ${currentRoomId}`;
+            
+            const badge = document.getElementById('roleBadge');
+            const hostControls = document.getElementById('hostControls');
+
+            if(isHost) {
+                badge.innerText = "Mode: HOST";
+                badge.className = "text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-1 rounded font-semibold";
+                hostControls.classList.remove('hidden');
+                document.getElementById('participantStatusBadge').style.display = 'none';
+            } else {
+                badge.innerText = "Mode: Participant";
+                badge.className = "text-xs bg-slate-700 px-2 py-1 rounded text-slate-300";
+                hostControls.classList.add('hidden');
+                document.getElementById('participantStatusBadge').style.display = 'flex';
+            }
+        }
+
+        function startListening() {
+            const roomRef = doc(db, "jamRooms", currentRoomId);
+            onSnapshot(roomRef, (docSnap) => {
+                if(docSnap.exists()) {
+                    const data = docSnap.data();
+                    
+                    if(data.hostForceFollow !== undefined) {
+                        hostForceFollow = data.hostForceFollow;
+                        updateSharedSyncUI();
+                    }
+
+                    if(data.currentSongId && (!currentSong || currentSong.id !== data.currentSongId)) {
+                        const found = songsLibrary.find(s => s.id === data.currentSongId);
+                        if(found) {
+                            currentSong = found;
+                            renderSongList(songsLibrary);
+                            renderSongContent();
+                        }
+                    }
+
+                    if(data.activeSection) {
+                        highlightSection(data.activeSection);
+                    }
+                }
+            });
+        }
+
+        window.filterSongs = () => {
+            const query = document.getElementById('searchSongInput').value.toLowerCase();
+            const filtered = songsLibrary.filter(song => 
+                song.title.toLowerCase().includes(query) || 
+                song.artist.toLowerCase().includes(query)
+            );
+            renderSongList(filtered);
+        }
+
+        window.selectSong = async (songId) => {
+            const found = songsLibrary.find(s => s.id === songId);
+            if(found) {
+                currentSong = found;
+                renderSongList(songsLibrary);
+                renderSongContent();
+
+                if(isHost && currentRoomId) {
+                    const roomRef = doc(db, "jamRooms", currentRoomId);
+                    await updateDoc(roomRef, {
+                        currentSongId: songId,
+                        activeSection: 'verse1',
+                        updatedAt: new Date()
+                    });
+                }
+            }
+        }
+
+        window.updateHostState = async (sectionKey) => {
+            if(!isHost) return;
+            const roomRef = doc(db, "jamRooms", currentRoomId);
+            await updateDoc(roomRef, {
+                activeSection: sectionKey,
+                updatedAt: new Date()
+            });
+        };
+
+        window.handleSectionClick = (sectionKey) => {
+            if (isHost) {
+                updateHostState(sectionKey);
+            } else if (!hostForceFollow) {
+                highlightSection(sectionKey);
+            }
+        }
+
+        window.toggleHostLock = async () => {
+            if(!isHost) return;
+            hostForceFollow = !hostForceFollow;
+            const roomRef = doc(db, "jamRooms", currentRoomId);
+            await updateDoc(roomRef, {
+                hostForceFollow: hostForceFollow,
+                updatedAt: new Date()
+            });
+        }
+
+        function updateSharedSyncUI() {
+            const lyricsCard = document.getElementById('lyricsCardSection');
+            const statusText = document.getElementById('statusText');
+            const statusDot = document.getElementById('statusDot');
+            const statusBadge = document.getElementById('participantStatusBadge');
+            const hostBtn = document.getElementById('hostLockToggleBtn');
+
+            if(hostForceFollow) {
+                if(isHost) {
+                    hostBtn.className = "bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-1 rounded transition";
+                    hostBtn.innerText = "Broadcast Sync Mode: ON";
+                } else {
+                    lyricsCard.classList.add('host-sync-glow');
+                    statusText.innerText = "Host Sync: ON (Locked)";
+                    statusDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+                    statusBadge.className = "text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5";
+                }
+            } else {
+                if(isHost) {
+                    hostBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold text-[10px] px-2.5 py-1 rounded transition";
+                    hostBtn.innerText = "Broadcast Sync Mode: OFF (Free Scroll)";
+                } else {
+                    lyricsCard.classList.remove('host-sync-glow');
+                    statusText.innerText = "Host Sync: OFF (Free Scroll)";
+                    statusDot.className = "w-2 h-2 rounded-full bg-slate-400";
+                    statusBadge.className = "text-xs bg-slate-700/60 text-slate-400 border border-slate-600 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5";
+                }
+            }
+        }
+
+        function highlightSection(sectionKey) {
+            document.querySelectorAll('#lyricsContainer > div').forEach(el => {
+                el.classList.remove('bg-amber-500/10', 'border-amber-500/50', 'shadow-md');
+            });
+
+            const activeEl = document.getElementById(`section-${sectionKey}`);
+            if(activeEl) {
+                activeEl.classList.add('bg-amber-500/10', 'border-amber-500/50', 'shadow-md');
+                if(isHost || hostForceFollow) {
+                    activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        }
+
+        function renderSongList(listToRender) {
+            const listEl = document.getElementById('songList');
+            listEl.innerHTML = '';
+            
+            if(listToRender.length === 0) {
+                listEl.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">No songs found.</p>`;
+                return;
+            }
+
+            listToRender.forEach(song => {
+                const btn = document.createElement('button');
+                const isSelected = currentSong && currentSong.id === song.id;
+                btn.className = `text-left px-3 py-2 rounded text-sm transition ${isSelected ? 'bg-amber-500/20 text-amber-400 font-semibold border-l-4 border-amber-500' : 'hover:bg-slate-700/50 text-slate-300'}`;
+                btn.innerText = `${song.title} - ${song.artist}`;
+                btn.onclick = () => selectSong(song.id);
+                listEl.appendChild(btn);
+            });
+        }
+
+        function renderSongContent() {
+            if(!currentSong) return;
+            document.getElementById('songTitle').innerText = currentSong.title;
+            document.getElementById('songArtist').innerText = currentSong.artist;
+            document.getElementById('currentKey').innerText = currentSong.key;
+
+            const container = document.getElementById('lyricsContainer');
+            container.innerHTML = '';
+
+            const hostButtonsContainer = document.getElementById('hostSectionButtons');
+            hostButtonsContainer.innerHTML = '';
+
+            for (const [sectionKey, text] of Object.entries(currentSong.sections)) {
+                const div = document.createElement('div');
+                div.id = `section-${sectionKey}`;
+                div.className = 'section-card p-3 rounded border border-slate-700/40 hover:border-amber-500/40';
+                div.setAttribute('onclick', `handleSectionClick('${sectionKey}')`);
+                div.innerHTML = `<h3 class="text-xs uppercase font-sans tracking-wider text-amber-400/70 mb-1 font-bold pointer-events-none">${sectionKey}</h3><pre class="whitespace-pre-wrap font-mono text-sm pointer-events-none">${text}</pre>`;
+                container.appendChild(div);
+
+                const hBtn = document.createElement('button');
+                hBtn.className = "bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-xs font-medium uppercase";
+                hBtn.innerText = sectionKey;
+                hBtn.onclick = () => updateHostState(sectionKey);
+                hostButtonsContainer.appendChild(hBtn);
+            }
+        }
+
+        window.openAddSongModal = () => document.getElementById('addSongModal').classList.remove('hidden');
+        window.closeAddSongModal = () => document.getElementById('addSongModal').classList.add('hidden');
+
+        window.saveNewSongToCloud = async () => {
+            const title = document.getElementById('newSongTitle').value.trim();
+            const artist = document.getElementById('newSongArtist').value.trim();
+            const key = document.getElementById('newSongKey').value.trim().toUpperCase() || 'C';
+            const verse1 = document.getElementById('newSongVerse1').value.trim();
+            const chorus = document.getElementById('newSongChorus').value.trim();
+
+            if(!title || !artist) {
+                alert("Please enter both Song Title and Artist!");
+                return;
+            }
+
+            const songId = title.toLowerCase().replace(/[^a-z0-9]/g, '_') + "_" + Math.floor(Math.random() * 1000);
+            const newSongData = {
+                id: songId,
+                title: title,
+                artist: artist,
+                key: key,
+                sections: {
+                    verse1: verse1 || "No lyrics provided",
+                    chorus: chorus || "No chorus provided"
+                }
+            };
+
+            songsLibrary.push(newSongData);
+            saveSongsToLocalStorage();
+            renderSongList(songsLibrary);
+            selectSong(songId);
+
+            try {
+                await setDoc(doc(db, "songsLibrary", songId), newSongData);
+                alert("Successfully saved locally and uploaded to the Cloud!");
+            } catch(e) {
+                alert("Saved to Local Storage, but you are offline so it hasn't uploaded to the cloud yet.");
+            }
+
+            closeAddSongModal();
+            
+            document.getElementById('newSongTitle').value = '';
+            document.getElementById('newSongArtist').value = '';
+            document.getElementById('newSongKey').value = '';
+            document.getElementById('newSongVerse1').value = '';
+            document.getElementById('newSongChorus').value = '';
+        }
+    </script>
+</body>
+</html>
