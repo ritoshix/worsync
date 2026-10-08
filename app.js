@@ -25,32 +25,25 @@ let currentTransposeOffset = 0;
 const notesSharp = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const notesFlat  = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 
+// Kumpletong Fretboard Diagrams katulad ng iyong reference
 const chordDiagrams = {
-    "C": "    I  II III\ne |--|--|--|\nB |-o-|--|--|\nG |--|--|--|\nD |--|-o-|--|\nA |--|--|-o-|",
-    "G": "    I  II III\ne |-o-|--|--|\nB |--|--|--|\nG |--|--|--|\nD |--|--|--|\nA |--|-o-|--|\nE |--|--|-o-|",
-    "Am": "    I  II III\ne |--|--|--|\nB |--|-o-|--|\nG |--|-o-|--|\nD |--|--|-o-|",
-    "F": "    I  II III\ne [o][o][o]\nB |--|-o-|--|\nG |--|--|-o-|",
-    "Dm": "    I  II III\ne |--|--|-o-|\nB |--|--|--|\nG |--|-o-|--|\nD |--|--|--|",
-    "E": "    I  II III\ne |--|--|--|\nB |--|--|--|\nG |--|-o-|--|\nD |--|-o-|--|\nA |--|-o-|--|",
-    "Em": "    I  II III\ne |--|--|--|\nB |--|--|--|\nG |--|--|--|\nD |--|-o-|--|\nA |--|-o-|--|"
+    "A": "  A\n  I   II  III IV\ne|---|---|---|---|\nB|---|-o-|---|---|\nG|---|-o-|---|---|\nD|---|-o-|---|---|\nA|---|---|---|---|\nX|---|---|---|---|",
+    "A/C#": "  A/C#\n  I   II  III IV\ne|---|---|---|---|\nB|---|-o-|---|---|\nG|---|---|-o-|---|\nD|---|-o-|---|---|\nA|---|-o-|---|---|\nX|---|---|---|---|",
+    "C": "  C\n  I   II  III IV\ne|---|---|---|---|\nB|-o-|---|---|---|\nG|---|---|---|---|\nD|---|-o-|---|---|\nA|---|---|-o-|---|\nE|---|---|---|---|",
+    "C#": "  C#\n  I   II  III IV\ne|---|-o-|---|---|\nB|---|---|-o-|---|\nG|---|-o-|---|---|\nD|---|---|-o-|---|\nA|---|---|-o-|---|\nE|---|-o-|---|---|",
+    "D": "  D\n  I   II  III IV\ne|---|---|-o-|---|\nB|---|---|---|-o-|\nG|---|---|-o-|---|\nD|---|---|---|---|\nA|---|---|---|---|\nX|---|---|---|---|",
+    "E": "  E\n  I   II  III IV\ne|---|---|---|---|\nB|---|---|---|---|\nG|---|-o-|---|---|\nD|---|-o-|---|---|\nA|---|-o-|---|---|\nE|---|---|---|---|",
+    "F": "  F\n  I   II  III IV\ne|-o-|-o-|-o-|-o-|\nB|---|-o-|-o-|-o-|\nG|---|---|---|-o-|\nD|---|---|---|-o-|\nA|---|---|-o-|---|\nE|-o-|-o-|-o-|-o-|",
+    "F#m": "  F#m\n  I   II  III IV\ne|-o-|-o-|-o-|-o-|\nB|-o-|-o-|-o-|-o-|\nG|---|---|---|-o-|\nD|---|---|-o-|---|\nA|---|---|-o-|---|\nE|-o-|-o-|-o-|-o-|",
+    "G": "  G\n  I   II  III IV\ne|---|---|---|-o-|\nB|---|---|---|---|\nG|---|---|---|---|\nD|---|---|---|---|\nA|---|-o-|---|---|\nE|---|---|---|-o-|",
+    "Am": "  Am\n  I   II  III IV\ne|---|---|---|---|\nB|---|-o-|---|---|\nG|---|-o-|---|---|\nD|---|---|-o-|---|\nA|---|---|---|---|\nX|---|---|---|---|",
+    "Dm": "  Dm\n  I   II  III IV\ne|---|-o-|---|---|\nB|---|---|-o-|---|\nG|---|-o-|---|---|\nD|---|---|---|---|\nA|---|---|---|---|\nX|---|---|---|---|"
 };
 
 window.addEventListener('DOMContentLoaded', () => {
     loadPersonalSetlist();
     initGlobalCloudLibrary();
-    setupGlobalListeners();
 });
-
-function setupGlobalListeners() {
-    const chordModal = document.getElementById('chordModal');
-    if(chordModal) {
-        chordModal.addEventListener('click', (e) => {
-            if(e.target === chordModal) {
-                window.closeChordModal();
-            }
-        });
-    }
-}
 
 function loadPersonalSetlist() {
     const savedSetlist = localStorage.getItem('worsync_personal_setlist');
@@ -116,7 +109,6 @@ async function initGlobalCloudLibrary() {
     });
 }
 
-// Manual Sync Cloud Button Function inside Browse Modal
 window.manualSyncCloud = async () => {
     try {
         const querySnapshot = await getDocs(collection(db, "songsLibrary"));
@@ -247,6 +239,7 @@ window.removeSongFromSetlist = async (event, songId) => {
     }
 }
 
+// Fixed Transpose Key Function
 window.transposeKey = (direction) => {
     if(!currentSong) return;
     currentTransposeOffset = (currentTransposeOffset + direction + 12) % 12;
@@ -632,22 +625,13 @@ function renderSongContent() {
     }
 }
 
+// Bumubuo ng Hover Tooltip para sa bawat Chord
 function formatClickableChordsInText(text) {
     return text.replace(/([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g, match => {
-        return `<span class="clickable-chord" onclick="event.stopPropagation(); window.showChordModal('${match}')">${match}</span>`;
+        let cleanChord = match.trim();
+        let diag = chordDiagrams[cleanChord] || `  ${cleanChord}\n  I   II  III IV\ne|---|---|---|---|\nB|---|---|---|---|\nG|---|---|---|---|\nD|---|---|---|---|\nA|---|---|---|---|\nE|---|---|---|---|`;
+        return `<span class="chord-tooltip-container"><span class="clickable-chord">${match}</span><span class="chord-tooltip">${diag}</span></span>`;
     });
-}
-
-window.showChordModal = (chordName) => {
-    let cleanChord = chordName.trim();
-    document.getElementById('modalChordTitle').innerText = cleanChord;
-    let diag = chordDiagrams[cleanChord] || `    I  II III\ne |--|--|--|\nB |--|--|--|\nG |--|--|--|\nD |--|--|--|\nA |--|--|--|\nE |--|--|--|\n(Standard Position)`;
-    document.getElementById('modalChordDiagram').innerText = diag;
-    document.getElementById('chordModal').classList.remove('hidden');
-}
-
-window.closeChordModal = () => {
-    document.getElementById('chordModal').classList.add('hidden');
 }
 
 window.openAddSongModal = () => document.getElementById('addSongModal').classList.remove('hidden');
