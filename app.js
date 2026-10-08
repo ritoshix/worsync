@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBOZIHmxS_CXwTAzt6dqnDf975BPyiD_uw",
@@ -21,6 +21,12 @@ let cloudSongsLibrary = [];
 let personalSetlist = [];   
 let currentSong = null;
 let currentTransposeOffset = 0;
+let personalCapoOffset = 0; // Feature 2
+
+// Auto-Scroll state (Feature 1)
+let isAutoScrolling = false;
+let autoScrollInterval = null;
+let participantId = 'user_' + Math.random().toString(36).substring(2, 9);
 
 const notesSharp = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const notesFlat  = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -28,7 +34,15 @@ const notesFlat  = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", 
 window.addEventListener('DOMContentLoaded', () => {
     loadPersonalSetlist();
     initGlobalCloudLibrary();
+    registerServiceWorker(); // Feature 4
 });
+
+// Feature 4: Register Service Worker for offline caching
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
+    }
+}
 
 function loadPersonalSetlist() {
     const savedSetlist = localStorage.getItem('worsync_personal_setlist');
@@ -69,15 +83,24 @@ function updateArtistSuggestions() {
     });
 }
 
+// Data saver: Loads cloud library from localStorage cache first if offline
 async function initGlobalCloudLibrary() {
+    const cachedCloud = localStorage.getItem('worsync_cloud_cache');
+    if(cachedCloud) {
+        try {
+            cloudSongsLibrary = JSON.parse(cachedCloud);
+        } catch(e) {}
+    }
+
     try {
         const querySnapshot = await getDocs(collection(db, "songsLibrary"));
         cloudSongsLibrary = [];
         querySnapshot.forEach((doc) => {
             cloudSongsLibrary.push(doc.data());
         });
+        localStorage.setItem('worsync_cloud_cache', JSON.stringify(cloudSongsLibrary));
     } catch(err) {
-        console.log("Offline mode: Using cached cloud data.");
+        console.log("Offline mode: Using cached cloud songbook data.");
     }
 
     onSnapshot(collection(db, "songsLibrary"), (snapshot) => {
@@ -89,6 +112,7 @@ async function initGlobalCloudLibrary() {
             } else {
                 cloudSongsLibrary[index] = updatedSong;
             }
+            localStorage.setItem('worsync_cloud_cache', JSON.stringify(cloudSongsLibrary));
             updateArtistSuggestions();
         });
     });
@@ -108,10 +132,11 @@ window.manualSyncCloud = async () => {
             }
         });
 
+        localStorage.setItem('worsync_cloud_cache', JSON.stringify(cloudSongsLibrary));
         renderCloudBrowserList(cloudSongsLibrary);
-        alert(`Successfully synced! Found ${cloudCount} new song(s) from the Cloud.`);
+        alert(`Successfully synced! Found ${cloudCount} new song(s) from Cloud.`);
     } catch(e) {
-        alert("Sync failed. Please check your internet connection.");
+        alert("Sync failed. Check your internet connection.");
     }
 }
 
@@ -201,7 +226,7 @@ window.removeSongFromSetlist = async (event, songId) => {
         return;
     }
 
-    if(confirm("Are you sure you want to remove this song from your setlist?")) {
+    if(confirm("Remove this song from your setlist?")) {
         personalSetlist = personalSetlist.filter(s => s.id !== songId);
         savePersonalSetlist();
 
@@ -224,6 +249,59 @@ window.removeSongFromSetlist = async (event, songId) => {
     }
 }
 
+// Feature 2: Personal Capo Transpose Control
+window.adjustCapo = (direction) => {
+    personalCapoOffset = (personalCapoOffset + direction + 12) % 12;
+    document.getElementById('capoDisplay').innerText = personalCapoOffset;
+    renderSongContent();
+}
+
+// Feature 3: High Contrast Stage Mode Toggle
+window.toggleStageMode = () => {
+    const body = document.getElementById('appBody');
+    const btn = document.getElementById('stageModeBtn');
+    body.classList.toggle('stage-mode');
+    if(body.classList.contains('stage-mode')) {
+        btn.className = "bg-amber-500 text-slate-950 font-bold text-xs px-2.5 py-1.5 rounded transition";
+        btn.innerText = "⚡ Stage Active";
+    } else {
+        btn.className = "bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-2.5 py-1.5 rounded font-medium transition";
+        btn.innerText = "💡 Stage Mode";
+    }
+}
+
+// Feature 1: Auto-Scroll Metronome Toggle
+window.toggleAutoScroll = () => {
+    isAutoScrolling = !isAutoScrolling;
+    const btn = document.getElementById('autoScrollBtn');
+    const container = document.getElementById('lyricsContainer');
+
+    if(isAutoScrolling) {
+        btn.className = "bg-rose-600 hover:bg-rose-500 text-white font-bold px-2 py-0.5 rounded text-[10px]";
+        btn.innerText = "Stop Scroll";
+        autoScrollInterval = setInterval(() => {
+            container.scrollBy({ top: 1, behavior: 'smooth' });
+        }, 80); // Smooth scroll tick speed
+    } else {
+        btn.className = "bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded text-[10px]";
+        btn.innerText = "Start Scroll";
+        clearInterval(autoScrollInterval);
+    }
+}
+
+// Feature 5: QR Code Room Sharing Modal
+window.showRoomQR = () => {
+    if(!currentRoomId) return;
+    const qrModal = document.getElementById('qrModal');
+    const qrImg = document.getElementById('qrImage');
+    const qrText = document.getElementById('qrRoomCodeText');
+    
+    qrText.innerText = `Room Code: ${currentRoomId}`;
+    // Using a public QR generator API for instant lightweight QR creation
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentRoomId)}&bgcolor=1e293b&color=f59e0b`;
+    qrModal.classList.remove('hidden');
+}
+
 window.transposeKey = (direction) => {
     if(!currentSong) return;
     currentTransposeOffset = (currentTransposeOffset + direction + 12) % 12;
@@ -241,14 +319,15 @@ window.transposeKey = (direction) => {
 }
 
 function transposeRawText(text, semitones) {
-    if(semitones === 0) return text;
+    let totalOffset = (semitones + personalCapoOffset) % 12;
+    if(totalOffset === 0) return text;
     let lines = text.split('\n');
     let processedLines = lines.map(line => {
         if(line.startsWith('>')) {
-            return '>' + line.substring(1).replace(/([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g, match => transposeSingleChord(match, semitones));
+            return '>' + line.substring(1).replace(/([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g, match => transposeSingleChord(match, totalOffset));
         } else {
             return line.replace(/<([^>]+)>/g, (m, chords) => {
-                let transposedChords = chords.replace(/([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g, match => transposeSingleChord(match, semitones));
+                let transposedChords = chords.replace(/([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g, match => transposeSingleChord(match, totalOffset));
                 return `<${transposedChords}>`;
             });
         }
@@ -289,11 +368,12 @@ window.createRoomAsHost = async () => {
 
     setupUI();
     startListening();
+    initParticipantPresence();
 };
 
 window.joinRoomAsParticipant = async () => {
     const code = document.getElementById('participantCodeInput').value.trim().toUpperCase();
-    if(!code) return alert("Please enter the Room Code provided by the Host!");
+    if(!code) return alert("Please enter the Room Code!");
 
     currentRoomId = code;
     isHost = false;
@@ -307,11 +387,26 @@ window.joinRoomAsParticipant = async () => {
 
     setupUI();
     startListening();
+    initParticipantPresence();
 };
+
+// Participant count presence tracking
+function initParticipantPresence() {
+    if(!currentRoomId) return;
+    const pRef = doc(db, "jamRooms", currentRoomId, "participants", participantId);
+    setDoc(pRef, { joinedAt: new Date(), isHost: isHost }, { merge: true });
+
+    onSnapshot(collection(db, "jamRooms", currentRoomId, "participants"), (snapshot) => {
+        const count = snapshot.size;
+        const badge = document.getElementById('roomParticipantCount');
+        if(badge) badge.innerText = `👥 ${count}`;
+    });
+}
 
 function setupUI() {
     document.getElementById('roomSetupScreen').classList.add('hidden');
     document.getElementById('activeRoomDisplay').innerText = `Room: ${currentRoomId}`;
+    document.getElementById('metronomeContainer').classList.remove('hidden'); // Show metronome
     
     const badge = document.getElementById('roleBadge');
     const followModeBtn = document.getElementById('followModeSyncBtn');
@@ -322,7 +417,7 @@ function setupUI() {
         badge.innerText = "Mode: HOST";
         badge.className = "text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-1 rounded font-semibold";
         followModeBtn.classList.remove('hidden');
-        floatingController.classList.remove('hidden'); // Show floating controller for Host
+        floatingController.classList.remove('hidden');
         participantStatusBadge.style.display = 'none';
     } else {
         badge.innerText = "Mode: Participant";
@@ -442,24 +537,24 @@ function updateSharedSyncUI() {
     if(hostForceFollow) {
         if(isHost) {
             followBtn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3 py-1.5 rounded transition flex items-center gap-1.5";
-            headerSyncText.innerText = "Follow Mode Sync: ON";
+            headerSyncText.innerText = "Follow Mode: ON";
             headerSyncDot.className = "w-2 h-2 rounded-full bg-white animate-pulse";
             lyricsCard.classList.add('host-sync-glow');
         } else {
             lyricsCard.classList.add('host-sync-glow');
-            statusText.innerText = "Follow Mode Sync: ON (Locked)";
+            statusText.innerText = "Follow Mode: ON (Locked)";
             statusDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
             statusBadge.className = "text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5";
         }
     } else {
         if(isHost) {
             followBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold text-xs px-3 py-1.5 rounded transition flex items-center gap-1.5";
-            headerSyncText.innerText = "Follow Mode Sync: OFF";
+            headerSyncText.innerText = "Follow Mode: OFF";
             headerSyncDot.className = "w-2 h-2 rounded-full bg-slate-400";
             lyricsCard.classList.remove('host-sync-glow');
         } else {
             lyricsCard.classList.remove('host-sync-glow');
-            statusText.innerText = "Follow Mode Sync: OFF (Free Scroll)";
+            statusText.innerText = "Follow Mode: OFF (Free Scroll)";
             statusDot.className = "w-2 h-2 rounded-full bg-slate-400";
             statusBadge.className = "text-xs bg-slate-700/60 text-slate-400 border border-slate-600 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5";
         }
@@ -610,7 +705,6 @@ function renderSongContent() {
         div.innerHTML = formattedHTML;
         container.appendChild(div);
 
-        // Populate Floating Host Controller Buttons
         const hBtn = document.createElement('button');
         hBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1 rounded text-[11px] font-medium uppercase text-left truncate transition";
         hBtn.innerText = secName;
