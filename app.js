@@ -17,7 +17,8 @@ const db = getFirestore(app);
 let currentRoomId = "";
 let isHost = false;
 let hostForceFollow = true;
-let songsLibrary = [];
+let cloudSongsLibrary = []; 
+let personalSetlist = [];   
 let currentSong = null;
 let currentTransposeOffset = 0;
 
@@ -34,18 +35,16 @@ const chordDiagrams = {
     "Em": "    I  II III\ne |--|--|--|\nB |--|--|--|\nG |--|--|--|\nD |--|-o-|--|\nA |--|-o-|--|"
 };
 
-const defaultSongs = [
-    {
-        id: "torete",
-        title: "Torete",
-        artist: "Moonstar88",
-        key: "C",
-        text: "[Verse 1]\n>    C          G\nTe narito ka na naman\n>    Am             F\nPinapawi ang luha sa aking mga mata\n\n[Chorus]\n>    C        G\nIsang tingin mo lang\n>    Am         F\nAking nasisigawan ang buong mundo"
-    }
-];
+const defaultSong = {
+    id: "torete",
+    title: "Torete",
+    artist: "Moonstar88",
+    key: "C",
+    text: "[Verse 1]\n>    C          G\nTe narito ka na naman\n>    Am             F\nPinapawi ang luha sa aking mga mata\n\n[Chorus]\n>    C        G\nIsang tingin mo lang\n>    Am         F\nAking nasisigawan ang buong mundo"
+};
 
 window.addEventListener('DOMContentLoaded', () => {
-    loadSongsFromLocalStorage();
+    loadPersonalSetlist();
     initGlobalCloudLibrary();
     setupGlobalListeners();
 });
@@ -61,31 +60,29 @@ function setupGlobalListeners() {
     }
 }
 
-function loadSongsFromLocalStorage() {
-    const localData = localStorage.getItem('worsync_songs');
-    if(localData) {
+function loadPersonalSetlist() {
+    const savedSetlist = localStorage.getItem('worsync_personal_setlist');
+    if(savedSetlist) {
         try {
-            songsLibrary = JSON.parse(localData);
-            if(songsLibrary.length > 0) {
-                currentSong = songsLibrary[0];
-                currentTransposeOffset = 0;
-                renderSongList(songsLibrary);
-                renderSongContent();
-            }
-        } catch(e) { console.error(e); }
+            personalSetlist = JSON.parse(savedSetlist);
+        } catch(e) { personalSetlist = []; }
     } else {
-        songsLibrary = defaultSongs;
-        localStorage.setItem('worsync_songs', JSON.stringify(songsLibrary));
-        currentSong = songsLibrary[0];
-        currentTransposeOffset = 0;
-        renderSongList(songsLibrary);
-        renderSongContent();
+        personalSetlist = [defaultSong];
+        localStorage.setItem('worsync_personal_setlist', JSON.stringify(personalSetlist));
     }
+
+    if(personalSetlist.length > 0) {
+        currentSong = personalSetlist[0];
+        currentTransposeOffset = 0;
+    }
+    renderSetlistUI();
+    renderSongContent();
     updateArtistSuggestions();
 }
 
-function saveSongsToLocalStorage() {
-    localStorage.setItem('worsync_songs', JSON.stringify(songsLibrary));
+function savePersonalSetlist() {
+    localStorage.setItem('worsync_personal_setlist', JSON.stringify(personalSetlist));
+    renderSetlistUI();
     updateArtistSuggestions();
 }
 
@@ -94,7 +91,7 @@ function updateArtistSuggestions() {
     if(!datalist) return;
     datalist.innerHTML = '';
     
-    const artists = [...new Set(songsLibrary.map(s => s.artist))];
+    const artists = [...new Set(cloudSongsLibrary.map(s => s.artist))];
     artists.forEach(artist => {
         const opt = document.createElement('option');
         opt.value = artist;
@@ -105,77 +102,114 @@ function updateArtistSuggestions() {
 async function initGlobalCloudLibrary() {
     try {
         const querySnapshot = await getDocs(collection(db, "songsLibrary"));
-        let cloudSongs = [];
+        cloudSongsLibrary = [];
         querySnapshot.forEach((doc) => {
-            cloudSongs.push(doc.data());
+            cloudSongsLibrary.push(doc.data());
         });
 
-        if(cloudSongs.length > 0) {
-            songsLibrary = cloudSongs;
-            saveSongsToLocalStorage();
-        } else {
-            for(let song of defaultSongs) {
-                await setDoc(doc(db, "songsLibrary", song.id), song);
-            }
+        if(cloudSongsLibrary.length === 0) {
+            await setDoc(doc(db, "songsLibrary", defaultSong.id), defaultSong);
+            cloudSongsLibrary.push(defaultSong);
         }
-
-        if(!currentSong && songsLibrary.length > 0) {
-            currentSong = songsLibrary[0];
-            currentTransposeOffset = 0;
-        }
-        renderSongList(songsLibrary);
-        renderSongContent();
     } catch(err) {
-        console.log("Offline mode: Using LocalStorage cache.");
+        console.log("Offline mode: Using cached cloud data.");
     }
 
     onSnapshot(collection(db, "songsLibrary"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             const updatedSong = change.doc.data();
-            const index = songsLibrary.findIndex(s => s.id === updatedSong.id);
+            const index = cloudSongsLibrary.findIndex(s => s.id === updatedSong.id);
             if(index === -1) {
-                songsLibrary.push(updatedSong);
+                cloudSongsLibrary.push(updatedSong);
             } else {
-                songsLibrary[index] = updatedSong;
+                cloudSongsLibrary[index] = updatedSong;
             }
-            saveSongsToLocalStorage();
-            filterSongs();
-
-            if(currentSong && currentSong.id === updatedSong.id) {
-                currentSong = updatedSong;
-                renderSongContent();
-            }
+            updateArtistSuggestions();
         });
     });
 }
 
-window.manualSyncCloud = async () => {
-    try {
-        const querySnapshot = await getDocs(collection(db, "songsLibrary"));
-        let cloudCount = 0;
-        
-        querySnapshot.forEach(async (document) => {
-            const cloudSong = document.data();
-            const exists = songsLibrary.find(s => s.id === cloudSong.id);
-            if(!exists) {
-                songsLibrary.push(cloudSong);
-                cloudCount++;
-            }
-        });
+// Host-only Check para sa pagbubukas ng Cloud Browser
+window.openCloudBrowser = () => {
+    if(!isHost && currentRoomId) {
+        alert("Only the Host can add songs to the setlist for this room!");
+        return;
+    }
+    document.getElementById('cloudBrowserModal').classList.remove('hidden');
+    renderCloudBrowserList(cloudSongsLibrary);
+}
 
-        for(let localSong of songsLibrary) {
-            await setDoc(doc(db, "songsLibrary", localSong.id), localSong);
+window.closeCloudBrowser = () => {
+    document.getElementById('cloudBrowserModal').classList.add('hidden');
+}
+
+window.filterCloudSongs = () => {
+    const query = document.getElementById('cloudSearchInput').value.toLowerCase();
+    const filtered = cloudSongsLibrary.filter(song => 
+        song.title.toLowerCase().includes(query) || 
+        song.artist.toLowerCase().includes(query)
+    );
+    renderCloudBrowserList(filtered);
+}
+
+function renderCloudBrowserList(list) {
+    const container = document.getElementById('cloudSongList');
+    container.innerHTML = '';
+
+    if(list.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">No songs in cloud library.</p>`;
+        return;
+    }
+
+    list.forEach(song => {
+        const isInSetlist = personalSetlist.some(s => s.id === song.id);
+
+        const item = document.createElement('div');
+        item.className = "bg-slate-900 border border-slate-700 p-2.5 rounded flex justify-between items-center text-xs";
+        
+        item.innerHTML = `
+            <div>
+                <p class="font-bold text-white">${song.title}</p>
+                <p class="text-slate-400 text-[10px]">${song.artist} • Key: <span class="text-amber-400">${song.key || 'C'}</span></p>
+            </div>
+        `;
+
+        const btn = document.createElement('button');
+        if(isInSetlist) {
+            btn.className = "bg-slate-700 text-slate-400 px-2.5 py-1 rounded text-[10px] cursor-not-allowed";
+            btn.innerText = "Added";
+            btn.disabled = true;
+        } else {
+            btn.className = "bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-2.5 py-1 rounded text-[10px] transition";
+            btn.innerText = "+ Add to Setlist";
+            btn.onclick = () => addSongToPersonalSetlist(song);
         }
 
-        saveSongsToLocalStorage();
-        renderSongList(songsLibrary);
-        alert(`Successfully synced! Added ${cloudCount} new song(s) from the Cloud.`);
-    } catch(e) {
-        alert("Sync failed. Please check your internet connection.");
+        item.appendChild(btn);
+        container.appendChild(item);
+    });
+}
+
+// Pag nag-add si Host, ia-update din ang Firestore room para mag-sync sa participants
+async function addSongToPersonalSetlist(song) {
+    const exists = personalSetlist.some(s => s.id === song.id);
+    if(!exists) {
+        personalSetlist.push(song);
+        savePersonalSetlist();
+        renderCloudBrowserList(cloudSongsLibrary);
+        selectSong(song.id);
+
+        // Kung Host at nasa active room, i-update ang setlist sa Firebase
+        if(isHost && currentRoomId) {
+            const roomRef = doc(db, "jamRooms", currentRoomId);
+            await updateDoc(roomRef, {
+                setlist: personalSetlist.map(s => s.id),
+                updatedAt: new Date()
+            });
+        }
     }
 }
 
-// Transpose Key Function na nag-a-update ng key label at ng mga chords
 window.transposeKey = (direction) => {
     if(!currentSong) return;
     currentTransposeOffset = (currentTransposeOffset + direction + 12) % 12;
@@ -235,6 +269,7 @@ window.createRoomAsHost = async () => {
         currentSongId: currentSong ? currentSong.id : "torete",
         activeSection: getFirstSectionKey(currentSong),
         hostForceFollow: true,
+        setlist: personalSetlist.map(s => s.id),
         updatedAt: new Date()
     }, { merge: true });
 
@@ -291,12 +326,25 @@ function startListening() {
                 updateSharedSyncUI();
             }
 
+            // Real-time sync ng setlist ng host patungo sa participants
+            if(data.setlist && Array.isArray(data.setlist)) {
+                let updatedSetlist = [];
+                data.setlist.forEach(songId => {
+                    let found = cloudSongsLibrary.find(s => s.id === songId) || personalSetlist.find(s => s.id === songId);
+                    if(found) updatedSetlist.push(found);
+                });
+                if(updatedSetlist.length > 0) {
+                    personalSetlist = updatedSetlist;
+                    savePersonalSetlist();
+                }
+            }
+
             if(data.currentSongId && (!currentSong || currentSong.id !== data.currentSongId)) {
-                const found = songsLibrary.find(s => s.id === data.currentSongId);
+                let found = personalSetlist.find(s => s.id === data.currentSongId) || cloudSongsLibrary.find(s => s.id === data.currentSongId);
                 if(found) {
                     currentSong = found;
                     currentTransposeOffset = 0;
-                    renderSongList(songsLibrary);
+                    renderSetlistUI();
                     renderSongContent();
                 }
             }
@@ -308,21 +356,12 @@ function startListening() {
     });
 }
 
-window.filterSongs = () => {
-    const query = document.getElementById('searchSongInput').value.toLowerCase();
-    const filtered = songsLibrary.filter(song => 
-        song.title.toLowerCase().includes(query) || 
-        song.artist.toLowerCase().includes(query)
-    );
-    renderSongList(filtered);
-}
-
 window.selectSong = async (songId) => {
-    const found = songsLibrary.find(s => s.id === songId);
+    const found = personalSetlist.find(s => s.id === songId);
     if(found) {
         currentSong = found;
         currentTransposeOffset = 0;
-        renderSongList(songsLibrary);
+        renderSetlistUI();
         renderSongContent();
 
         if(isHost && currentRoomId) {
@@ -421,17 +460,17 @@ function highlightSection(sectionKey) {
     }
 }
 
-function renderSongList(listToRender) {
+function renderSetlistUI() {
     const listEl = document.getElementById('songList');
     listEl.innerHTML = '';
     
-    if(listToRender.length === 0) {
-        listEl.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">No songs found.</p>`;
+    if(personalSetlist.length === 0) {
+        listEl.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">Setlist is empty.</p>`;
         return;
     }
 
     const grouped = {};
-    listToRender.forEach(song => {
+    personalSetlist.forEach(song => {
         const artist = song.artist || 'Unknown Artist';
         if(!grouped[artist]) grouped[artist] = [];
         grouped[artist].push(song);
@@ -587,16 +626,24 @@ window.saveNewSongToCloud = async () => {
         text: text
     };
 
-    songsLibrary.push(newSongData);
-    saveSongsToLocalStorage();
-    renderSongList(songsLibrary);
+    cloudSongsLibrary.push(newSongData);
+    personalSetlist.push(newSongData);
+    savePersonalSetlist();
     selectSong(songId);
+
+    if(isHost && currentRoomId) {
+        const roomRef = doc(db, "jamRooms", currentRoomId);
+        await updateDoc(roomRef, {
+            setlist: personalSetlist.map(s => s.id),
+            updatedAt: new Date()
+        });
+    }
 
     try {
         await setDoc(doc(db, "songsLibrary", songId), newSongData);
-        alert("Successfully saved locally and uploaded to the Cloud!");
+        alert("Successfully saved to Cloud and added to your Setlist!");
     } catch(e) {
-        alert("Saved locally, but offline so not uploaded to cloud yet.");
+        alert("Saved to setlist, but offline so not uploaded to cloud yet.");
     }
 
     closeAddSongModal();
