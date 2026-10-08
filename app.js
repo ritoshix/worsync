@@ -121,15 +121,15 @@ window.manualSyncCloud = async () => {
         });
         localStorage.setItem('worsync_cloud_cache', JSON.stringify(cloudSongsLibrary));
         renderCloudBrowserList(cloudSongsLibrary);
-        alert(`Synced! Found ${count} new song(s).`);
+        alert(`Successfully synced! Found ${count} new song(s) from Cloud.`);
     } catch(e) {
-        alert("Sync failed. Check connection.");
+        alert("Sync failed. Please check your network connection.");
     }
 }
 
 window.openCloudBrowser = () => {
     if(!isHost && currentRoomId) {
-        alert("Only the Host can add songs to setlist!");
+        alert("Only the Host can add songs to the setlist for this room!");
         return;
     }
     document.getElementById('cloudBrowserModal').classList.remove('hidden');
@@ -150,7 +150,7 @@ function renderCloudBrowserList(list) {
     const container = document.getElementById('cloudSongList');
     container.innerHTML = '';
     if(list.length === 0) {
-        container.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">No songs found.</p>`;
+        container.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">No songs found in cloud library.</p>`;
         return;
     }
 
@@ -194,11 +194,11 @@ async function addSongToPersonalSetlist(song) {
 window.removeSongFromSetlist = async (event, songId) => {
     event.stopPropagation();
     if(!isHost && currentRoomId) {
-        alert("Only Host can delete songs!");
+        alert("Only the Host can delete songs from the setlist!");
         return;
     }
 
-    if(confirm("Remove this song?")) {
+    if(confirm("Are you sure you want to remove this song from your setlist?")) {
         personalSetlist = personalSetlist.filter(s => s.id !== songId);
         savePersonalSetlist();
 
@@ -255,7 +255,6 @@ window.showRoomQR = () => {
     document.getElementById('qrModal').classList.remove('hidden');
 }
 
-// Host-Controlled Transpose synced to Firestore
 window.changeRoomTranspose = async (direction) => {
     if(!isHost) {
         alert("Only the Host can transpose keys for the room!");
@@ -298,11 +297,13 @@ function transposeSingleChord(chord, semitones) {
 
 window.createRoomAsHost = async () => {
     const code = document.getElementById('hostCodeInput').value.trim().toUpperCase();
-    if(!code) return alert("Enter Room Code!");
+    if(!code) return alert("Please enter a Room Code first!");
+    
     currentRoomId = code;
     isHost = true;
     
-    await setDoc(doc(db, "jamRooms", currentRoomId), {
+    const roomRef = doc(db, "jamRooms", currentRoomId);
+    await setDoc(roomRef, {
         currentSongId: currentSong ? currentSong.id : "",
         activeSection: getFirstSectionKey(currentSong),
         hostForceFollow: true,
@@ -318,16 +319,27 @@ window.createRoomAsHost = async () => {
 
 window.joinRoomAsParticipant = async () => {
     const code = document.getElementById('participantCodeInput').value.trim().toUpperCase();
-    if(!code) return alert("Enter Room Code!");
+    if(!code) return alert("Please enter the Room Code!");
+
     currentRoomId = code;
     isHost = false;
 
-    const snap = await getDoc(doc(db, "jamRooms", currentRoomId));
-    if(!snap.exists()) return alert("Room not found!");
+    try {
+        const roomRef = doc(db, "jamRooms", currentRoomId);
+        const snap = await getDoc(roomRef);
+        
+        if(!snap.exists()) {
+            alert("Room Code not found or session has already ended. Please check the code with your Host.");
+            currentRoomId = "";
+            return;
+        }
 
-    setupUI();
-    startListening();
-    initParticipantPresence();
+        setupUI();
+        startListening();
+        initParticipantPresence();
+    } catch(err) {
+        alert("Unable to connect to the room. Please check your network connection and try again.");
+    }
 };
 
 function initParticipantPresence() {
@@ -364,8 +376,16 @@ function initParticipantPresence() {
 
 window.leaveRoomAndRefresh = async () => {
     if(currentRoomId) {
-        clearInterval(heartbeatTimer);
-        await deleteDoc(doc(db, "jamRooms", currentRoomId, "participants", participantId)).catch(() => {});
+        try {
+            clearInterval(heartbeatTimer);
+            if(isHost) {
+                const roomRef = doc(db, "jamRooms", currentRoomId);
+                await deleteDoc(roomRef);
+            } else {
+                const pRef = doc(db, "jamRooms", currentRoomId, "participants", participantId);
+                await deleteDoc(pRef);
+            }
+        } catch(e) {}
     }
     location.reload();
 }
@@ -410,6 +430,12 @@ function startListening() {
                 if(currentSong) renderSongContent();
             }
             if(data.activeSection) highlightSection(data.activeSection);
+        } else {
+            // If the room was deleted by the host while active
+            if(!isHost) {
+                alert("The Host has ended the session. Returning to setup screen.");
+                location.reload();
+            }
         }
     });
 }
@@ -587,7 +613,7 @@ window.saveNewSongToCloud = async () => {
     const key = document.getElementById('newSongKey').value.trim().toUpperCase() || 'C';
     const text = document.getElementById('newSongText').value.trim();
 
-    if(!artist || !title || !text) return alert("Fill in Artist, Title, and Text!");
+    if(!artist || !title || !text) return alert("Please fill in Artist, Title, and Text!");
 
     const songId = title.toLowerCase().replace(/[^a-z0-9]/g, '_') + "_" + Math.floor(Math.random() * 1000);
     const newSongData = { id: songId, title, artist, key, text };
@@ -606,9 +632,9 @@ window.saveNewSongToCloud = async () => {
 
     try {
         await setDoc(doc(db, "songsLibrary", songId), newSongData);
-        alert("Saved to Cloud & Setlist!");
+        alert("Successfully saved to Cloud and added to your Setlist!");
     } catch(e) {
-        alert("Saved to setlist (offline).");
+        alert("Saved to setlist (offline mode).");
     }
 
     closeAddSongModal();
