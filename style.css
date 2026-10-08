@@ -19,7 +19,6 @@ html {
     font-weight: bold;
 }
 
-/* High Contrast Stage Mode Theme */
 body.stage-mode {
     background-color: #000000 !important;
     color: #ffffff !important;
