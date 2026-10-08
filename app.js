@@ -26,9 +26,11 @@ let personalCapoOffset = 0;
 let isAutoScrolling = false;
 let autoScrollInterval = null;
 let participantId = 'user_' + Math.random().toString(36).substring(2, 9);
+let heartbeatTimer = null;
 
 const notesSharp = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const notesFlat  = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+const chordRegex = /([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g;
 
 window.addEventListener('DOMContentLoaded', () => {
     loadPersonalSetlist();
@@ -38,16 +40,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
+        navigator.serviceWorker.register('sw.js').catch(() => {});
     }
 }
 
 function loadPersonalSetlist() {
     const savedSetlist = localStorage.getItem('worsync_personal_setlist');
     if(savedSetlist) {
-        try {
-            personalSetlist = JSON.parse(savedSetlist);
-        } catch(e) { personalSetlist = []; }
+        try { personalSetlist = JSON.parse(savedSetlist); } catch(e) { personalSetlist = []; }
     } else {
         personalSetlist = [];
         localStorage.setItem('worsync_personal_setlist', JSON.stringify(personalSetlist));
@@ -72,7 +72,6 @@ function updateArtistSuggestions() {
     const datalist = document.getElementById('artistSuggestions');
     if(!datalist) return;
     datalist.innerHTML = '';
-    
     const artists = [...new Set(cloudSongsLibrary.map(s => s.artist))];
     artists.forEach(artist => {
         const opt = document.createElement('option');
@@ -84,21 +83,15 @@ function updateArtistSuggestions() {
 async function initGlobalCloudLibrary() {
     const cachedCloud = localStorage.getItem('worsync_cloud_cache');
     if(cachedCloud) {
-        try {
-            cloudSongsLibrary = JSON.parse(cachedCloud);
-        } catch(e) {}
+        try { cloudSongsLibrary = JSON.parse(cachedCloud); } catch(e) {}
     }
 
     try {
         const querySnapshot = await getDocs(collection(db, "songsLibrary"));
         cloudSongsLibrary = [];
-        querySnapshot.forEach((doc) => {
-            cloudSongsLibrary.push(doc.data());
-        });
+        querySnapshot.forEach((doc) => { cloudSongsLibrary.push(doc.data()); });
         localStorage.setItem('worsync_cloud_cache', JSON.stringify(cloudSongsLibrary));
-    } catch(err) {
-        console.log("Offline mode: Using cached cloud data.");
-    }
+    } catch(err) {}
 
     onSnapshot(collection(db, "songsLibrary"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
@@ -118,43 +111,37 @@ async function initGlobalCloudLibrary() {
 window.manualSyncCloud = async () => {
     try {
         const querySnapshot = await getDocs(collection(db, "songsLibrary"));
-        let cloudCount = 0;
-        
+        let count = 0;
         querySnapshot.forEach((document) => {
             const cloudSong = document.data();
-            const exists = cloudSongsLibrary.find(s => s.id === cloudSong.id);
-            if(!exists) {
+            if(!cloudSongsLibrary.find(s => s.id === cloudSong.id)) {
                 cloudSongsLibrary.push(cloudSong);
-                cloudCount++;
+                count++;
             }
         });
-
         localStorage.setItem('worsync_cloud_cache', JSON.stringify(cloudSongsLibrary));
         renderCloudBrowserList(cloudSongsLibrary);
-        alert(`Successfully synced! Found ${cloudCount} new song(s) from Cloud.`);
+        alert(`Synced! Found ${count} new song(s).`);
     } catch(e) {
-        alert("Sync failed. Check your internet connection.");
+        alert("Sync failed. Check connection.");
     }
 }
 
 window.openCloudBrowser = () => {
     if(!isHost && currentRoomId) {
-        alert("Only the Host can add songs to the setlist for this room!");
+        alert("Only the Host can add songs to setlist!");
         return;
     }
     document.getElementById('cloudBrowserModal').classList.remove('hidden');
     renderCloudBrowserList(cloudSongsLibrary);
 }
 
-window.closeCloudBrowser = () => {
-    document.getElementById('cloudBrowserModal').classList.add('hidden');
-}
+window.closeCloudBrowser = () => document.getElementById('cloudBrowserModal').classList.add('hidden');
 
 window.filterCloudSongs = () => {
     const query = document.getElementById('cloudSearchInput').value.toLowerCase();
     const filtered = cloudSongsLibrary.filter(song => 
-        song.title.toLowerCase().includes(query) || 
-        song.artist.toLowerCase().includes(query)
+        song.title.toLowerCase().includes(query) || song.artist.toLowerCase().includes(query)
     );
     renderCloudBrowserList(filtered);
 }
@@ -162,24 +149,16 @@ window.filterCloudSongs = () => {
 function renderCloudBrowserList(list) {
     const container = document.getElementById('cloudSongList');
     container.innerHTML = '';
-
     if(list.length === 0) {
-        container.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">No songs found in cloud library.</p>`;
+        container.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">No songs found.</p>`;
         return;
     }
 
     list.forEach(song => {
         const isInSetlist = personalSetlist.some(s => s.id === song.id);
-
         const item = document.createElement('div');
         item.className = "bg-slate-900 border border-slate-700 p-2.5 rounded flex justify-between items-center text-xs";
-        
-        item.innerHTML = `
-            <div>
-                <p class="font-bold text-white">${song.title}</p>
-                <p class="text-slate-400 text-[10px]">${song.artist} • Key: <span class="text-amber-400">${song.key || 'C'}</span></p>
-            </div>
-        `;
+        item.innerHTML = `<div><p class="font-bold text-white">${song.title}</p><p class="text-slate-400 text-[10px]">${song.artist} • Key: <span class="text-amber-400">${song.key || 'C'}</span></p></div>`;
 
         const btn = document.createElement('button');
         if(isInSetlist) {
@@ -188,26 +167,23 @@ function renderCloudBrowserList(list) {
             btn.disabled = true;
         } else {
             btn.className = "bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-2.5 py-1 rounded text-[10px] transition";
-            btn.innerText = "+ Add to Setlist";
+            btn.innerText = "+ Add";
             btn.onclick = () => addSongToPersonalSetlist(song);
         }
-
         item.appendChild(btn);
         container.appendChild(item);
     });
 }
 
 async function addSongToPersonalSetlist(song) {
-    const exists = personalSetlist.some(s => s.id === song.id);
-    if(!exists) {
+    if(!personalSetlist.some(s => s.id === song.id)) {
         personalSetlist.push(song);
         savePersonalSetlist();
         renderCloudBrowserList(cloudSongsLibrary);
         selectSong(song.id);
 
         if(isHost && currentRoomId) {
-            const roomRef = doc(db, "jamRooms", currentRoomId);
-            await updateDoc(roomRef, {
+            await updateDoc(doc(db, "jamRooms", currentRoomId), {
                 setlist: personalSetlist.map(s => s.id),
                 updatedAt: new Date()
             });
@@ -217,28 +193,22 @@ async function addSongToPersonalSetlist(song) {
 
 window.removeSongFromSetlist = async (event, songId) => {
     event.stopPropagation();
-    
     if(!isHost && currentRoomId) {
-        alert("Only the Host can delete songs from the setlist!");
+        alert("Only Host can delete songs!");
         return;
     }
 
-    if(confirm("Remove this song from your setlist?")) {
+    if(confirm("Remove this song?")) {
         personalSetlist = personalSetlist.filter(s => s.id !== songId);
         savePersonalSetlist();
 
         if(currentSong && currentSong.id === songId) {
-            if(personalSetlist.length > 0) {
-                selectSong(personalSetlist[0].id);
-            } else {
-                currentSong = null;
-                location.reload();
-            }
+            if(personalSetlist.length > 0) selectSong(personalSetlist[0].id);
+            else { currentSong = null; location.reload(); }
         }
 
         if(isHost && currentRoomId) {
-            const roomRef = doc(db, "jamRooms", currentRoomId);
-            await updateDoc(roomRef, {
+            await updateDoc(doc(db, "jamRooms", currentRoomId), {
                 setlist: personalSetlist.map(s => s.id),
                 updatedAt: new Date()
             });
@@ -256,13 +226,10 @@ window.toggleStageMode = () => {
     const body = document.getElementById('appBody');
     const btn = document.getElementById('stageModeBtn');
     body.classList.toggle('stage-mode');
-    if(body.classList.contains('stage-mode')) {
-        btn.className = "bg-amber-500 text-slate-950 font-bold text-xs px-2.5 py-1.5 rounded transition";
-        btn.innerText = "⚡ Stage Active";
-    } else {
-        btn.className = "bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-2.5 py-1.5 rounded font-medium transition";
-        btn.innerText = "💡 Stage Mode";
-    }
+    btn.className = body.classList.contains('stage-mode') 
+        ? "bg-amber-500 text-slate-950 font-bold text-xs px-2.5 py-1.5 rounded transition" 
+        : "bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-2.5 py-1.5 rounded font-medium transition";
+    btn.innerText = body.classList.contains('stage-mode') ? "⚡ Stage Active" : "💡 Stage Mode";
 }
 
 window.toggleAutoScroll = () => {
@@ -273,9 +240,7 @@ window.toggleAutoScroll = () => {
     if(isAutoScrolling) {
         btn.className = "bg-rose-600 hover:bg-rose-500 text-white font-bold px-2 py-0.5 rounded text-[10px]";
         btn.innerText = "Stop";
-        autoScrollInterval = setInterval(() => {
-            container.scrollBy({ top: 1, behavior: 'smooth' });
-        }, 80);
+        autoScrollInterval = setInterval(() => container.scrollBy({ top: 1, behavior: 'smooth' }), 80);
     } else {
         btn.className = "bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded text-[10px]";
         btn.innerText = "Start";
@@ -285,75 +250,63 @@ window.toggleAutoScroll = () => {
 
 window.showRoomQR = () => {
     if(!currentRoomId) return;
-    const qrModal = document.getElementById('qrModal');
-    const qrImg = document.getElementById('qrImage');
-    const qrText = document.getElementById('qrRoomCodeText');
-    
-    qrText.innerText = `Room Code: ${currentRoomId}`;
-    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentRoomId)}&bgcolor=1e293b&color=f59e0b`;
-    qrModal.classList.remove('hidden');
+    document.getElementById('qrRoomCodeText').innerText = `Room Code: ${currentRoomId}`;
+    document.getElementById('qrImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentRoomId)}&bgcolor=1e293b&color=f59e0b`;
+    document.getElementById('qrModal').classList.remove('hidden');
 }
 
-window.transposeKey = (direction) => {
+// Host-Controlled Transpose synced to Firestore
+window.changeRoomTranspose = async (direction) => {
+    if(!isHost) {
+        alert("Only the Host can transpose keys for the room!");
+        return;
+    }
     if(!currentSong) return;
-    currentTransposeOffset = (currentTransposeOffset + direction + 12) % 12;
-    
-    let baseKey = currentSong.key || "C";
-    let noteList = baseKey.includes("b") ? notesFlat : notesSharp;
-    let idx = noteList.indexOf(baseKey);
-    if(idx === -1) idx = notesSharp.indexOf(baseKey);
-    if(idx === -1) idx = 0;
 
-    let newKeyIdx = (idx + currentTransposeOffset) % 12;
-    document.getElementById('currentKey').innerText = noteList[newKeyIdx];
-    
-    renderSongContent();
+    let newOffset = (currentTransposeOffset + direction + 12) % 12;
+    if(currentRoomId) {
+        await updateDoc(doc(db, "jamRooms", currentRoomId), {
+            transposeOffset: newOffset,
+            updatedAt: new Date()
+        });
+    } else {
+        currentTransposeOffset = newOffset;
+        renderSongContent();
+    }
 }
 
 function transposeRawText(text, semitones) {
     let totalOffset = (semitones + personalCapoOffset) % 12;
     if(totalOffset === 0) return text;
-    let lines = text.split('\n');
-    let processedLines = lines.map(line => {
+    return text.split('\n').map(line => {
         if(line.startsWith('>')) {
-            return '>' + line.substring(1).replace(/([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g, match => transposeSingleChord(match, totalOffset));
+            return '>' + line.substring(1).replace(chordRegex, m => transposeSingleChord(m, totalOffset));
         } else {
-            return line.replace(/<([^>]+)>/g, (m, chords) => {
-                let transposedChords = chords.replace(/([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g, match => transposeSingleChord(match, totalOffset));
-                return `<${transposedChords}>`;
-            });
+            return line.replace(/<([^>]+)>/g, (_, chords) => `<${chords.replace(chordRegex, m => transposeSingleChord(m, totalOffset))}>`);
         }
-    });
-    return processedLines.join('\n');
+    }).join('\n');
 }
 
 function transposeSingleChord(chord, semitones) {
     let rootMatch = chord.match(/^([A-G][b\#]?)(.*)/);
     if(!rootMatch) return chord;
-    let root = rootMatch[1];
-    let suffix = rootMatch[2];
-    
-    let noteList = root.includes("b") ? notesFlat : notesSharp;
-    let idx = noteList.indexOf(root);
-    if(idx === -1) idx = notesSharp.indexOf(root);
+    let noteList = rootMatch[1].includes("b") ? notesFlat : notesSharp;
+    let idx = noteList.indexOf(rootMatch[1]);
     if(idx === -1) return chord;
-    
-    let newIdx = (idx + semitones + 12) % 12;
-    return noteList[newIdx] + suffix;
+    return noteList[(idx + semitones + 12) % 12] + rootMatch[2];
 }
 
 window.createRoomAsHost = async () => {
     const code = document.getElementById('hostCodeInput').value.trim().toUpperCase();
-    if(!code) return alert("Please enter a Room Code first!");
-    
+    if(!code) return alert("Enter Room Code!");
     currentRoomId = code;
     isHost = true;
     
-    const roomRef = doc(db, "jamRooms", currentRoomId);
-    await setDoc(roomRef, {
+    await setDoc(doc(db, "jamRooms", currentRoomId), {
         currentSongId: currentSong ? currentSong.id : "",
         activeSection: getFirstSectionKey(currentSong),
         hostForceFollow: true,
+        transposeOffset: 0,
         setlist: personalSetlist.map(s => s.id),
         updatedAt: new Date()
     }, { merge: true });
@@ -365,17 +318,12 @@ window.createRoomAsHost = async () => {
 
 window.joinRoomAsParticipant = async () => {
     const code = document.getElementById('participantCodeInput').value.trim().toUpperCase();
-    if(!code) return alert("Please enter the Room Code!");
-
+    if(!code) return alert("Enter Room Code!");
     currentRoomId = code;
     isHost = false;
 
-    const roomRef = doc(db, "jamRooms", currentRoomId);
-    const snap = await getDoc(roomRef);
-    if(!snap.exists()) {
-        alert("No active room found with this code!");
-        return;
-    }
+    const snap = await getDoc(doc(db, "jamRooms", currentRoomId));
+    if(!snap.exists()) return alert("Room not found!");
 
     setupUI();
     startListening();
@@ -385,28 +333,39 @@ window.joinRoomAsParticipant = async () => {
 function initParticipantPresence() {
     if(!currentRoomId) return;
     const pRef = doc(db, "jamRooms", currentRoomId, "participants", participantId);
-    setDoc(pRef, { joinedAt: new Date(), isHost: isHost }, { merge: true });
+    
+    const sendPing = () => {
+        setDoc(pRef, { lastSeen: Date.now(), isHost: isHost }, { merge: true }).catch(() => {});
+    };
 
-    const cleanupPresence = () => {
+    sendPing();
+    heartbeatTimer = setInterval(sendPing, 4000);
+
+    const cleanup = () => {
+        clearInterval(heartbeatTimer);
         deleteDoc(pRef).catch(() => {});
     };
 
-    window.addEventListener('beforeunload', cleanupPresence);
-    window.addEventListener('pagehide', cleanupPresence);
+    window.addEventListener('beforeunload', cleanup);
+    window.addEventListener('pagehide', cleanup);
 
     onSnapshot(collection(db, "jamRooms", currentRoomId, "participants"), (snapshot) => {
-        const count = snapshot.size;
+        const now = Date.now();
+        let activeCount = 0;
+        snapshot.forEach((d) => {
+            const data = d.data();
+            if(data.lastSeen && (now - data.lastSeen < 8000)) activeCount++;
+            else deleteDoc(d.ref).catch(() => {});
+        });
         const badge = document.getElementById('roomParticipantCount');
-        if(badge) badge.innerText = `👥 ${count}`;
+        if(badge) badge.innerText = `👥 ${Math.max(1, activeCount)}`;
     });
 }
 
 window.leaveRoomAndRefresh = async () => {
     if(currentRoomId) {
-        try {
-            const pRef = doc(db, "jamRooms", currentRoomId, "participants", participantId);
-            await deleteDoc(pRef);
-        } catch(e) {}
+        clearInterval(heartbeatTimer);
+        await deleteDoc(doc(db, "jamRooms", currentRoomId, "participants", participantId)).catch(() => {});
     }
     location.reload();
 }
@@ -416,60 +375,41 @@ function setupUI() {
     document.getElementById('activeRoomDisplay').innerText = `Room: ${currentRoomId}`;
     document.getElementById('metronomeContainer').classList.remove('hidden');
     
-    const badge = document.getElementById('roleBadge');
-    const followModeBtn = document.getElementById('followModeSyncBtn');
-    const participantStatusBadge = document.getElementById('participantStatusBadge');
-    const floatingController = document.getElementById('floatingHostController');
-
-    if(isHost) {
-        badge.innerText = "Mode: HOST";
-        badge.className = "text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-1 rounded font-semibold";
-        followModeBtn.classList.remove('hidden');
-        floatingController.classList.remove('hidden');
-        participantStatusBadge.style.display = 'none';
-    } else {
-        badge.innerText = "Mode: Participant";
-        badge.className = "text-xs bg-slate-700 px-2 py-1 rounded text-slate-300";
-        followModeBtn.classList.add('hidden');
-        floatingController.classList.add('hidden');
-        participantStatusBadge.style.display = 'flex';
-    }
+    document.getElementById('roleBadge').innerText = isHost ? "Mode: HOST" : "Mode: Participant";
+    document.getElementById('roleBadge').className = isHost ? "text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-1 rounded font-semibold" : "text-xs bg-slate-700 px-2 py-1 rounded text-slate-300";
+    
+    document.getElementById('followModeSyncBtn').classList.toggle('hidden', !isHost);
+    document.getElementById('floatingHostController').classList.toggle('hidden', !isHost);
+    document.getElementById('participantStatusBadge').style.display = isHost ? 'none' : 'flex';
 }
 
 function startListening() {
-    const roomRef = doc(db, "jamRooms", currentRoomId);
-    onSnapshot(roomRef, (docSnap) => {
+    onSnapshot(doc(db, "jamRooms", currentRoomId), (docSnap) => {
         if(docSnap.exists()) {
             const data = docSnap.data();
-            
             if(data.hostForceFollow !== undefined) {
                 hostForceFollow = data.hostForceFollow;
                 updateSharedSyncUI();
             }
-
             if(data.setlist && Array.isArray(data.setlist)) {
-                let updatedSetlist = [];
-                data.setlist.forEach(songId => {
-                    let found = cloudSongsLibrary.find(s => s.id === songId) || personalSetlist.find(s => s.id === songId);
-                    if(found) updatedSetlist.push(found);
-                });
-                personalSetlist = updatedSetlist;
+                personalSetlist = data.setlist.map(id => cloudSongsLibrary.find(s => s.id === id) || personalSetlist.find(s => s.id === id)).filter(Boolean);
                 savePersonalSetlist();
             }
-
+            if(data.transposeOffset !== undefined) {
+                currentTransposeOffset = data.transposeOffset;
+            }
             if(data.currentSongId && (!currentSong || currentSong.id !== data.currentSongId)) {
                 let found = personalSetlist.find(s => s.id === data.currentSongId) || cloudSongsLibrary.find(s => s.id === data.currentSongId);
-                if(found) {
-                    currentSong = found;
-                    currentTransposeOffset = 0;
-                    renderSetlistUI();
-                    renderSongContent();
+                if(found) { 
+                    currentSong = found; 
+                    currentTransposeOffset = data.transposeOffset || 0; 
+                    renderSetlistUI(); 
+                    renderSongContent(); 
                 }
+            } else {
+                if(currentSong) renderSongContent();
             }
-
-            if(data.activeSection) {
-                highlightSection(data.activeSection);
-            }
+            if(data.activeSection) highlightSection(data.activeSection);
         }
     });
 }
@@ -481,12 +421,11 @@ window.selectSong = async (songId) => {
         currentTransposeOffset = 0;
         renderSetlistUI();
         renderSongContent();
-
         if(isHost && currentRoomId) {
-            const roomRef = doc(db, "jamRooms", currentRoomId);
-            await updateDoc(roomRef, {
+            await updateDoc(doc(db, "jamRooms", currentRoomId), {
                 currentSongId: songId,
                 activeSection: getFirstSectionKey(currentSong),
+                transposeOffset: 0,
                 updatedAt: new Date()
             });
         }
@@ -495,98 +434,49 @@ window.selectSong = async (songId) => {
 
 function getFirstSectionKey(song) {
     if(!song || !song.text) return 'Intro';
-    let lines = song.text.split('\n');
-    for(let line of lines) {
-        let trimmed = line.trim();
-        if(trimmed.startsWith('[') && trimmed.endsWith(']')) {
-            return trimmed.substring(1, trimmed.length - 1);
-        }
-    }
-    return 'Intro';
+    const match = song.text.split('\n').find(l => l.trim().startsWith('[') && l.trim().endsWith(']'));
+    return match ? match.trim().substring(1, match.trim().length - 1) : 'Intro';
 }
 
 window.updateHostState = async (sectionKey) => {
     if(!isHost) return;
-    const roomRef = doc(db, "jamRooms", currentRoomId);
-    await updateDoc(roomRef, {
-        activeSection: sectionKey,
-        updatedAt: new Date()
-    });
+    await updateDoc(doc(db, "jamRooms", currentRoomId), { activeSection: sectionKey, updatedAt: new Date() });
 };
 
 window.handleSectionClick = (sectionKey) => {
-    if (isHost) {
-        updateHostState(sectionKey);
-    } else if (!hostForceFollow) {
-        highlightSection(sectionKey);
-    }
+    if(isHost) updateHostState(sectionKey);
+    else if(!hostForceFollow) highlightSection(sectionKey);
 }
 
 window.toggleHostLock = async () => {
     if(!isHost) return;
     hostForceFollow = !hostForceFollow;
-    const roomRef = doc(db, "jamRooms", currentRoomId);
-    await updateDoc(roomRef, {
-        hostForceFollow: hostForceFollow,
-        updatedAt: new Date()
-    });
+    await updateDoc(doc(db, "jamRooms", currentRoomId), { hostForceFollow: hostForceFollow, updatedAt: new Date() });
 }
 
 function updateSharedSyncUI() {
     const lyricsCard = document.getElementById('lyricsCardSection');
-    const statusText = document.getElementById('statusText');
-    const statusDot = document.getElementById('statusDot');
-    const statusBadge = document.getElementById('participantStatusBadge');
-    
-    const followBtn = document.getElementById('followModeSyncBtn');
-    const headerSyncText = document.getElementById('headerSyncText');
-    const headerSyncDot = document.getElementById('headerSyncDot');
-
-    if(hostForceFollow) {
-        if(isHost) {
-            followBtn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3 py-1.5 rounded transition flex items-center gap-1.5";
-            headerSyncText.innerText = "Follow Mode: ON";
-            headerSyncDot.className = "w-2 h-2 rounded-full bg-white animate-pulse";
-            lyricsCard.classList.add('host-sync-glow');
-        } else {
-            lyricsCard.classList.add('host-sync-glow');
-            statusText.innerText = "Follow Mode: ON (Locked)";
-            statusDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
-            statusBadge.className = "text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5";
-        }
+    lyricsCard.classList.toggle('host-sync-glow', hostForceFollow);
+    if(!isHost) {
+        document.getElementById('statusText').innerText = hostForceFollow ? "Follow Mode: ON (Locked)" : "Follow Mode: OFF (Free Scroll)";
+        document.getElementById('statusDot').className = hostForceFollow ? "w-2 h-2 rounded-full bg-emerald-400 animate-pulse" : "w-2 h-2 rounded-full bg-slate-400";
     } else {
-        if(isHost) {
-            followBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold text-xs px-3 py-1.5 rounded transition flex items-center gap-1.5";
-            headerSyncText.innerText = "Follow Mode: OFF";
-            headerSyncDot.className = "w-2 h-2 rounded-full bg-slate-400";
-            lyricsCard.classList.remove('host-sync-glow');
-        } else {
-            lyricsCard.classList.remove('host-sync-glow');
-            statusText.innerText = "Follow Mode: OFF (Free Scroll)";
-            statusDot.className = "w-2 h-2 rounded-full bg-slate-400";
-            statusBadge.className = "text-xs bg-slate-700/60 text-slate-400 border border-slate-600 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5";
-        }
+        document.getElementById('headerSyncText').innerText = hostForceFollow ? "Follow Mode: ON" : "Follow Mode: OFF";
     }
 }
 
 function highlightSection(sectionKey) {
-    document.querySelectorAll('#lyricsContainer > div').forEach(el => {
-        el.classList.remove('bg-amber-500/10', 'border-amber-500/50', 'shadow-md');
-    });
-
+    document.querySelectorAll('#lyricsContainer > div').forEach(el => el.classList.remove('bg-amber-500/10', 'border-amber-500/50', 'shadow-md'));
     const activeEl = document.getElementById(`section-${CSS.escape(sectionKey)}`);
     if(activeEl) {
         activeEl.classList.add('bg-amber-500/10', 'border-amber-500/50', 'shadow-md');
-        if(isHost || hostForceFollow) {
-            activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+        if(isHost || hostForceFollow) activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 }
 
 function renderSetlistUI() {
     const listEl = document.getElementById('songList');
     listEl.innerHTML = '';
-    
     if(personalSetlist.length === 0) {
         listEl.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">Setlist is empty.</p>`;
         return;
@@ -594,7 +484,7 @@ function renderSetlistUI() {
 
     const grouped = {};
     personalSetlist.forEach(song => {
-        const artist = song.artist || 'Unknown Artist';
+        const artist = song.artist || 'Unknown';
         if(!grouped[artist]) grouped[artist] = [];
         grouped[artist].push(song);
     });
@@ -602,43 +492,20 @@ function renderSetlistUI() {
     for(const [artist, songs] of Object.entries(grouped)) {
         const artistGroup = document.createElement('div');
         artistGroup.className = "space-y-1";
-
-        const artistHeader = document.createElement('p');
-        artistHeader.className = "text-[11px] font-bold text-amber-400/80 uppercase tracking-wider px-1 pt-1";
-        artistHeader.innerText = artist;
-        artistGroup.appendChild(artistHeader);
+        artistGroup.innerHTML = `<p class="text-[11px] font-bold text-amber-400/80 uppercase tracking-wider px-1 pt-1">${artist}</p>`;
 
         songs.forEach(song => {
-            const btn = document.createElement('button');
             const isSelected = currentSong && currentSong.id === song.id;
+            const btn = document.createElement('button');
             btn.className = `w-full text-left px-3 py-1.5 rounded text-xs transition flex justify-between items-center ${isSelected ? 'bg-amber-500/20 text-amber-400 font-semibold border-l-4 border-amber-500' : 'hover:bg-slate-700/50 text-slate-300'}`;
+            btn.innerHTML = `<span>${song.title}</span><div class="flex items-center gap-1.5"><span class="text-[9px] font-mono bg-slate-800 px-1 py-0.5 rounded text-amber-400/80 border border-slate-700">${song.key || 'C'}</span>${isHost ? `<span class="text-rose-400 hover:text-rose-300 font-bold px-1 text-[11px]" title="Remove">✕</span>` : ''}</div>`;
             
-            const spanTitle = document.createElement('span');
-            spanTitle.innerText = song.title;
-            
-            const rightContainer = document.createElement('div');
-            rightContainer.className = "flex items-center gap-1.5";
-
-            const spanKey = document.createElement('span');
-            spanKey.className = "text-[9px] font-mono bg-slate-800 px-1 py-0.5 rounded text-amber-400/80 border border-slate-700";
-            spanKey.innerText = song.key || 'C';
-            rightContainer.appendChild(spanKey);
-
             if(isHost) {
-                const delBtn = document.createElement('span');
-                delBtn.className = "text-rose-400 hover:text-rose-300 font-bold px-1 text-[11px]";
-                delBtn.innerHTML = "✕";
-                delBtn.title = "Remove from setlist";
-                delBtn.onclick = (e) => removeSongFromSetlist(e, song.id);
-                rightContainer.appendChild(delBtn);
+                btn.querySelector('.text-rose-400').onclick = (e) => removeSongFromSetlist(e, song.id);
             }
-
-            btn.appendChild(spanTitle);
-            btn.appendChild(rightContainer);
             btn.onclick = () => selectSong(song.id);
             artistGroup.appendChild(btn);
         });
-
         listEl.appendChild(artistGroup);
     }
 }
@@ -652,33 +519,28 @@ function renderSongContent() {
     let baseKey = currentSong.key || "C";
     let noteList = baseKey.includes("b") ? notesFlat : notesSharp;
     let idx = noteList.indexOf(baseKey);
-    if(idx === -1) idx = notesSharp.indexOf(baseKey);
     if(idx === -1) idx = 0;
-    let displayedKey = noteList[(idx + currentTransposeOffset) % 12];
-    document.getElementById('currentKey').innerText = displayedKey;
+    document.getElementById('currentKey').innerText = noteList[(idx + currentTransposeOffset) % 12];
 
     const container = document.getElementById('lyricsContainer');
     container.innerHTML = '';
-
     const hostButtonsContainer = document.getElementById('hostSectionButtons');
     hostButtonsContainer.innerHTML = '';
 
-    let rawText = currentSong.text || "";
-    let transposedRaw = transposeRawText(rawText, currentTransposeOffset);
+    let transposedRaw = transposeRawText(currentSong.text || "", currentTransposeOffset);
     let lines = transposedRaw.split('\n');
-
     let currentSectionName = "Intro";
     let sectionLines = [];
     let sectionsMap = {};
 
-    function flushSection() {
+    const flushSection = () => {
         if(sectionLines.length > 0) {
             sectionsMap[currentSectionName] = sectionLines.join('\n');
             sectionLines = [];
         }
-    }
+    };
 
-    for(let line of lines) {
+    lines.forEach(line => {
         let trimmed = line.trim();
         if(trimmed.startsWith('[') && trimmed.endsWith(']')) {
             flushSection();
@@ -686,29 +548,24 @@ function renderSongContent() {
         } else {
             sectionLines.push(line);
         }
-    }
+    });
     flushSection();
 
     for(const [secName, secText] of Object.entries(sectionsMap)) {
         const div = document.createElement('div');
         div.id = `section-${CSS.escape(secName)}`;
         div.className = 'section-card p-3 rounded border border-slate-700/40 hover:border-amber-500/40';
-        div.setAttribute('onclick', `handleSectionClick('${secName}')`);
+        div.onclick = () => handleSectionClick(secName);
 
         let formattedHTML = `<h3 class="text-xs uppercase font-sans tracking-wider text-amber-400/70 mb-1 font-bold pointer-events-none">${secName}</h3><pre class="chord-lyrics-pre text-sm pointer-events-none">`;
         
-        let subLines = secText.split('\n');
-        for(let sLine of subLines) {
+        secText.split('\n').forEach(sLine => {
             if(sLine.startsWith('>')) {
-                let chordContent = sLine.substring(1);
-                formattedHTML += `<span class="chord-line">${formatClickableChordsInText(chordContent)}</span>\n`;
+                formattedHTML += `<span class="chord-line">${sLine.substring(1).replace(chordRegex, m => `<span class="chord-line">${m}</span>`)}</span>\n`;
             } else {
-                let parsedLine = sLine.replace(/<([^>]+)>/g, (m, chords) => {
-                    return `<span class="chord-line font-bold">${formatClickableChordsInText(chords)}</span>`;
-                });
-                formattedHTML += `${parsedLine}\n`;
+                formattedHTML += `${sLine.replace(/<([^>]+)>/g, (_, chords) => `<span class="chord-line font-bold">${chords}</span>`)}\n`;
             }
-        }
+        });
         formattedHTML += `</pre>`;
         div.innerHTML = formattedHTML;
         container.appendChild(div);
@@ -721,12 +578,6 @@ function renderSongContent() {
     }
 }
 
-function formatClickableChordsInText(text) {
-    return text.replace(/([A-G][b\#]?[m]?2?3?4?5?6?7?9?11?13?(?:\/[A-G][b\#]?)?)/g, match => {
-        return `<span class="chord-line">${match}</span>`;
-    });
-}
-
 window.openAddSongModal = () => document.getElementById('addSongModal').classList.remove('hidden');
 window.closeAddSongModal = () => document.getElementById('addSongModal').classList.add('hidden');
 
@@ -736,19 +587,10 @@ window.saveNewSongToCloud = async () => {
     const key = document.getElementById('newSongKey').value.trim().toUpperCase() || 'C';
     const text = document.getElementById('newSongText').value.trim();
 
-    if(!artist || !title || !text) {
-        alert("Please fill in Artist, Title, and Text!");
-        return;
-    }
+    if(!artist || !title || !text) return alert("Fill in Artist, Title, and Text!");
 
     const songId = title.toLowerCase().replace(/[^a-z0-9]/g, '_') + "_" + Math.floor(Math.random() * 1000);
-    const newSongData = {
-        id: songId,
-        title: title,
-        artist: artist,
-        key: key,
-        text: text
-    };
+    const newSongData = { id: songId, title, artist, key, text };
 
     cloudSongsLibrary.push(newSongData);
     personalSetlist.push(newSongData);
@@ -756,8 +598,7 @@ window.saveNewSongToCloud = async () => {
     selectSong(songId);
 
     if(isHost && currentRoomId) {
-        const roomRef = doc(db, "jamRooms", currentRoomId);
-        await updateDoc(roomRef, {
+        await updateDoc(doc(db, "jamRooms", currentRoomId), {
             setlist: personalSetlist.map(s => s.id),
             updatedAt: new Date()
         });
@@ -765,13 +606,12 @@ window.saveNewSongToCloud = async () => {
 
     try {
         await setDoc(doc(db, "songsLibrary", songId), newSongData);
-        alert("Successfully saved to Cloud and added to your Setlist!");
+        alert("Saved to Cloud & Setlist!");
     } catch(e) {
-        alert("Saved to setlist, but offline so not uploaded to cloud yet.");
+        alert("Saved to setlist (offline).");
     }
 
     closeAddSongModal();
-    
     document.getElementById('newSongArtist').value = '';
     document.getElementById('newSongTitle').value = '';
     document.getElementById('newSongKey').value = '';
