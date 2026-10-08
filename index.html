@@ -11,8 +11,9 @@
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
 
     <!-- ROOM SETUP SCREEN -->
-    <div id="roomSetupScreen" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center p-4">
-        <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl max-w-md w-full shadow-2xl space-y-5">
+    <div id="roomSetupScreen" class="fixed inset-0 bg-slate-900 z-50 flex flex-col justify-between items-center p-4 overflow-y-auto">
+        <div></div> <!-- Top Spacer -->
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl max-w-md w-full shadow-2xl space-y-5 my-auto">
             <div>
                 <h2 class="text-2xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">WorSync Session 🎸</h2>
                 <p class="text-xs text-slate-400 mt-1">Host a jamming session or join an existing room.</p>
@@ -46,6 +47,10 @@
                 </div>
             </div>
         </div>
+        <!-- Footer for Room Setup Screen -->
+        <footer class="w-full text-center text-xs text-slate-500 py-2">
+            <p>© 2026 WorSync. All rights reserved. | Created by: <span class="text-amber-400/80 font-semibold">Christian Javier</span></p>
+        </footer>
     </div>
 
     <!-- BROWSE CLOUD LIBRARY MODAL -->
@@ -96,18 +101,6 @@
                 <button onclick="closeAddSongModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2 rounded text-xs font-medium">Cancel</button>
                 <button onclick="saveNewSongToCloud()" class="bg-amber-600 hover:bg-amber-500 text-slate-950 px-4 py-2 rounded text-xs font-bold">Save & Upload</button>
             </div>
-        </div>
-    </div>
-
-    <!-- CHORD DIAGRAM MODAL -->
-    <div id="chordModal" class="fixed inset-0 bg-slate-950/80 z-50 hidden flex items-center justify-center p-4" onclick="closeChordModal()">
-        <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl max-w-xs w-full shadow-2xl text-center space-y-3" onclick="event.stopPropagation()">
-            <div class="flex justify-between items-center border-b border-slate-700 pb-2">
-                <h3 id="modalChordTitle" class="text-lg font-bold text-amber-400 font-mono">A/C#</h3>
-                <button onclick="closeChordModal()" class="text-slate-400 hover:text-white text-sm font-bold">✕</button>
-            </div>
-            <pre id="modalChordDiagram" class="font-mono text-xs text-slate-200 bg-slate-900 p-3 rounded leading-tight text-left overflow-x-auto"></pre>
-            <p class="text-[10px] text-slate-500">Guitar Fretboard Diagram (Standard Tuning)</p>
         </div>
     </div>
 
