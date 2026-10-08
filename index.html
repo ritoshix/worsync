@@ -48,6 +48,24 @@
         </div>
     </div>
 
+    <!-- BROWSE CLOUD LIBRARY MODAL (Para idagdag sa Personal Setlist) -->
+    <div id="cloudBrowserModal" class="fixed inset-0 bg-slate-950/80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                <h3 class="text-lg font-bold text-amber-400">Global Cloud Songbook Library</h3>
+                <button onclick="closeCloudBrowser()" class="text-slate-400 hover:text-white text-sm font-bold">✕</button>
+            </div>
+            
+            <div>
+                <input type="text" id="cloudSearchInput" oninput="filterCloudSongs()" placeholder="🔍 Search public songs from cloud..." class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:outline-none focus:border-amber-500">
+            </div>
+
+            <div id="cloudSongList" class="flex flex-col gap-2 overflow-y-auto max-h-[50vh] pr-1 flex-1">
+                <!-- Dynamic list of cloud songs with Add to Setlist button -->
+            </div>
+        </div>
+    </div>
+
     <!-- ADD SONG MODAL -->
     <div id="addSongModal" class="fixed inset-0 bg-slate-950/80 z-50 hidden flex items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
@@ -70,13 +88,6 @@
                 <div>
                     <label class="block text-slate-400 mb-1">Text* (Chords & Lyrics)</label>
                     <textarea id="newSongText" rows="10" placeholder="[Verse 1]&#10;>    E      B&#10;You are here moving in our midst&#10;&#10;[Chorus]&#10;>    A      E&#10;Way Maker, Miracle Worker..." class="w-full bg-slate-900 border border-slate-700 rounded p-2 font-mono text-white text-xs"></textarea>
-                    
-                    <div class="mt-2 bg-slate-900/80 p-2.5 rounded border border-slate-700 text-[11px] text-slate-400 space-y-1">
-                        <p class="font-semibold text-amber-400">Formatting Guidelines:</p>
-                        <p>• Use brackets for sections: <code class="text-amber-300">[Verse 1]</code>, <code class="text-amber-300">[Chorus]</code>, <code class="text-amber-300">[Bridge]</code></p>
-                        <p>• Add <code class="text-amber-300">&gt;</code> at the beginning of a line containing chords.</p>
-                        <p>• Highlight inline chords using brackets: <code class="text-amber-300">&lt;Am Dm E&gt;</code></p>
-                    </div>
                 </div>
             </div>
 
@@ -129,21 +140,17 @@
     <!-- MAIN CONTAINER -->
     <main class="flex-1 max-w-4xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
         
-        <!-- SIDEBAR / CATEGORIZED SONGBOOK -->
+        <!-- SIDEBAR / PERSONAL SETLIST -->
         <aside class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 md:col-span-1 flex flex-col justify-between gap-3">
             <div class="space-y-3 flex flex-col h-full">
                 <div class="flex items-center justify-between">
-                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Songbook</h2>
-                    <button onclick="manualSyncCloud()" class="bg-slate-700 hover:bg-slate-600 text-amber-400 border border-amber-500/30 text-[10px] px-2 py-1 rounded font-medium transition flex items-center gap-1" title="Check Cloud & Sync to LocalStorage">
-                        <span>🔄 Sync Cloud</span>
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">My Setlist</h2>
+                    <button onclick="openCloudBrowser()" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/40 text-[10px] px-2 py-1 rounded font-medium transition flex items-center gap-1" title="Browse Cloud Songbook">
+                        <span>🌐 Browse Cloud</span>
                     </button>
                 </div>
-                
-                <div>
-                    <input type="text" id="searchSongInput" oninput="filterSongs()" placeholder="🔍 Search title or artist..." class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:outline-none focus:border-amber-500">
-                </div>
 
-                <div id="songList" class="flex flex-col gap-3 overflow-y-auto max-h-[45vh] pr-1"></div>
+                <div id="songList" class="flex flex-col gap-3 overflow-y-auto max-h-[50vh] pr-1"></div>
             </div>
 
             <button onclick="openAddSongModal()" class="w-full bg-slate-700 hover:bg-slate-600 text-amber-400 border border-amber-500/30 text-xs py-2 rounded font-medium transition flex items-center justify-center gap-1 mt-2">
