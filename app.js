@@ -314,18 +314,22 @@ function setupUI() {
     document.getElementById('activeRoomDisplay').innerText = `Room: ${currentRoomId}`;
     
     const badge = document.getElementById('roleBadge');
-    const hostControls = document.getElementById('hostControls');
+    const followModeBtn = document.getElementById('followModeSyncBtn');
+    const participantStatusBadge = document.getElementById('participantStatusBadge');
+    const floatingController = document.getElementById('floatingHostController');
 
     if(isHost) {
         badge.innerText = "Mode: HOST";
         badge.className = "text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-1 rounded font-semibold";
-        hostControls.classList.remove('hidden');
-        document.getElementById('participantStatusBadge').style.display = 'none';
+        followModeBtn.classList.remove('hidden');
+        floatingController.classList.remove('hidden'); // Show floating controller for Host
+        participantStatusBadge.style.display = 'none';
     } else {
         badge.innerText = "Mode: Participant";
         badge.className = "text-xs bg-slate-700 px-2 py-1 rounded text-slate-300";
-        hostControls.classList.add('hidden');
-        document.getElementById('participantStatusBadge').style.display = 'flex';
+        followModeBtn.classList.add('hidden');
+        floatingController.classList.add('hidden');
+        participantStatusBadge.style.display = 'flex';
     }
 }
 
@@ -430,27 +434,32 @@ function updateSharedSyncUI() {
     const statusText = document.getElementById('statusText');
     const statusDot = document.getElementById('statusDot');
     const statusBadge = document.getElementById('participantStatusBadge');
-    const hostBtn = document.getElementById('hostLockToggleBtn');
+    
+    const followBtn = document.getElementById('followModeSyncBtn');
+    const headerSyncText = document.getElementById('headerSyncText');
+    const headerSyncDot = document.getElementById('headerSyncDot');
 
     if(hostForceFollow) {
         if(isHost) {
-            hostBtn.className = "bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-1 rounded transition";
-            hostBtn.innerText = "Broadcast Sync Mode: ON";
+            followBtn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3 py-1.5 rounded transition flex items-center gap-1.5";
+            headerSyncText.innerText = "Follow Mode Sync: ON";
+            headerSyncDot.className = "w-2 h-2 rounded-full bg-white animate-pulse";
             lyricsCard.classList.add('host-sync-glow');
         } else {
             lyricsCard.classList.add('host-sync-glow');
-            statusText.innerText = "Host Sync: ON (Locked)";
+            statusText.innerText = "Follow Mode Sync: ON (Locked)";
             statusDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
             statusBadge.className = "text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5";
         }
     } else {
         if(isHost) {
-            hostBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold text-[10px] px-2.5 py-1 rounded transition";
-            hostBtn.innerText = "Broadcast Sync Mode: OFF (Free Scroll)";
+            followBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold text-xs px-3 py-1.5 rounded transition flex items-center gap-1.5";
+            headerSyncText.innerText = "Follow Mode Sync: OFF";
+            headerSyncDot.className = "w-2 h-2 rounded-full bg-slate-400";
             lyricsCard.classList.remove('host-sync-glow');
         } else {
             lyricsCard.classList.remove('host-sync-glow');
-            statusText.innerText = "Host Sync: OFF (Free Scroll)";
+            statusText.innerText = "Follow Mode Sync: OFF (Free Scroll)";
             statusDot.className = "w-2 h-2 rounded-full bg-slate-400";
             statusBadge.className = "text-xs bg-slate-700/60 text-slate-400 border border-slate-600 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5";
         }
@@ -601,8 +610,9 @@ function renderSongContent() {
         div.innerHTML = formattedHTML;
         container.appendChild(div);
 
+        // Populate Floating Host Controller Buttons
         const hBtn = document.createElement('button');
-        hBtn.className = "bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-xs font-medium uppercase";
+        hBtn.className = "bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1 rounded text-[11px] font-medium uppercase text-left truncate transition";
         hBtn.innerText = secName;
         hBtn.onclick = () => updateHostState(secName);
         hostButtonsContainer.appendChild(hBtn);
