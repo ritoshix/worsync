@@ -8,11 +8,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-300" id="appBody">
 
     <!-- ROOM SETUP SCREEN -->
     <div id="roomSetupScreen" class="fixed inset-0 bg-slate-900 z-50 flex flex-col justify-between items-center p-4 overflow-y-auto">
-        <div></div> <!-- Top Spacer -->
+        <div></div> 
         <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl max-w-md w-full shadow-2xl space-y-5 my-auto">
             <div>
                 <h2 class="text-2xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">WorSync Session 🎸</h2>
@@ -103,15 +103,30 @@
         </div>
     </div>
 
+    <!-- QR CODE ROOM SHARING MODAL (Feature 5) -->
+    <div id="qrModal" class="fixed inset-0 bg-slate-950/80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl max-w-xs w-full shadow-2xl text-center space-y-4">
+            <h3 class="text-sm font-bold text-amber-400 uppercase">Room QR Code</h3>
+            <div id="qrcodeContainer" class="bg-white p-4 rounded flex items-center justify-center">
+                <!-- Simple visual representation or QR API -->
+                <img id="qrImage" src="" alt="Room QR" class="w-40 h-40 object-contain">
+            </div>
+            <p id="qrRoomCodeText" class="text-xs font-mono font-bold text-amber-400"></p>
+            <button onclick="document.getElementById('qrModal').classList.add('hidden')" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-2 rounded text-xs font-medium">Close</button>
+        </div>
+    </div>
+
     <!-- HEADER / NAVIGATION -->
     <header class="bg-slate-800 border-b border-slate-700 p-4 sticky top-0 z-40 flex flex-wrap justify-between items-center gap-2">
         <div class="flex items-center space-x-2">
             <span class="text-xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">WorSync 🎸</span>
             <span id="roleBadge" class="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Mode: -</span>
-            <span id="activeRoomDisplay" class="text-xs font-mono bg-slate-900 px-2 py-1 rounded text-amber-400">Room: --</span>
+            <span id="activeRoomDisplay" class="text-xs font-mono bg-slate-900 px-2 py-1 rounded text-amber-400 cursor-pointer" onclick="showRoomQR()" title="Click to show QR Code">Room: --</span>
+            <span id="roomParticipantCount" class="text-xs font-mono bg-slate-900 px-2 py-1 rounded text-emerald-400" title="Active Participants">👥 1</span>
         </div>
         
         <div class="flex items-center gap-2 flex-wrap">
+            <!-- Transpose Key Controls -->
             <div class="flex items-center bg-slate-700 rounded px-2 py-1 text-sm gap-1">
                 <span class="text-[10px] text-slate-400 uppercase font-semibold">Key:</span>
                 <button onclick="transposeKey(-1)" class="px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 rounded text-xs font-bold text-amber-400">-</button>
@@ -119,14 +134,27 @@
                 <button onclick="transposeKey(1)" class="px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 rounded text-xs font-bold text-amber-400">+</button>
             </div>
 
+            <!-- Personal Capo Offset (Feature 2) -->
+            <div class="flex items-center bg-slate-700 rounded px-2 py-1 text-sm gap-1" title="Personal Capo Offset">
+                <span class="text-[10px] text-indigo-300 uppercase font-semibold">Capo:</span>
+                <button onclick="adjustCapo(-1)" class="px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 rounded text-xs font-bold text-indigo-400">-</button>
+                <span id="capoDisplay" class="mx-0.5 font-bold text-indigo-400 w-4 text-center">0</span>
+                <button onclick="adjustCapo(1)" class="px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 rounded text-xs font-bold text-indigo-400">+</button>
+            </div>
+
+            <!-- Stage Mode Toggle (Feature 3) -->
+            <button onclick="toggleStageMode()" id="stageModeBtn" class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-2.5 py-1.5 rounded font-medium transition" title="Toggle High Contrast Stage Mode">
+                💡 Stage Mode
+            </button>
+
             <button id="followModeSyncBtn" onclick="toggleHostLock()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3 py-1.5 rounded transition hidden flex items-center gap-1.5">
                 <span id="headerSyncDot" class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                <span id="headerSyncText">Follow Mode Sync: ON</span>
+                <span id="headerSyncText">Follow Mode: ON</span>
             </button>
 
             <div id="participantStatusBadge" class="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 px-3 py-1.5 rounded font-semibold flex items-center gap-1.5">
                 <span id="statusDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span id="statusText">Follow Mode Sync: ON</span>
+                <span id="statusText">Follow Mode: ON</span>
             </div>
 
             <button onclick="location.reload()" class="bg-rose-600 hover:bg-rose-500 text-xs px-3 py-1.5 rounded font-medium transition">
@@ -164,24 +192,31 @@
                         <h1 id="songTitle" class="text-2xl font-bold text-white">Welcome to WorSync 🎸</h1>
                         <p id="songArtist" class="text-sm text-slate-400">No song selected</p>
                     </div>
-                    <div class="text-right">
-                        <span class="text-[10px] uppercase text-slate-400 block font-semibold">Original Key</span>
-                        <span id="originalSongKeyDisplay" class="text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded">-</span>
+                    <div class="text-right flex items-center gap-3">
+                        <!-- Auto-Scroll / Metronome Bar (Feature 1) -->
+                        <div id="metronomeContainer" class="hidden flex items-center gap-2 bg-slate-900/80 px-3 py-1 rounded border border-slate-700">
+                            <span id="bpmIndicator" class="text-xs font-mono text-amber-400">⚡ 100 BPM</span>
+                            <button onclick="toggleAutoScroll()" id="autoScrollBtn" class="bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded text-[10px]">Start Scroll</button>
+                        </div>
+                        <div>
+                            <span class="text-[10px] uppercase text-slate-400 block font-semibold">Original Key</span>
+                            <span id="originalSongKeyDisplay" class="text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded">-</span>
+                        </div>
                     </div>
                 </div>
 
                 <div id="lyricsContainer" class="space-y-4 font-mono text-base leading-relaxed overflow-y-auto max-h-[55vh] p-2 text-slate-300 text-xs">
                     <div class="bg-slate-900/60 p-5 rounded-lg border border-slate-700 space-y-3 font-sans">
-                        <h3 class="text-amber-400 font-bold text-sm">How to Use WorSync:</h3>
+                        <h3 class="text-amber-400 font-bold text-sm">How to Use WorSync (Data Saver Mode Enabled):</h3>
                         <p>1. As a <b>Host</b>, click <span class="text-amber-300 font-mono">"Browse Cloud"</span> or <span class="text-amber-300 font-mono">"Upload New Song"</span> in the left sidebar to build your Setlist.</p>
-                        <p>2. Songs added to your Setlist will automatically appear and sync in real-time with connected Participants via your Room Code.</p>
-                        <p>3. Use the <span class="text-amber-300 font-mono">-</span> and <span class="text-amber-300 font-mono">+</span> buttons at the top to transpose song chords instantly.</p>
+                        <p>2. Songs and setlists are cached locally in your device storage to minimize internet usage.</p>
+                        <p>3. Use <b>Capo Offset</b> for personal tuning adjustments, and <b>Stage Mode</b> for high-contrast readability.</p>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- FLOATING HOST CONTROLLER PANEL (Right Side Floating) -->
+        <!-- FLOATING HOST CONTROLLER PANEL -->
         <div id="floatingHostController" class="hidden fixed right-6 bottom-16 bg-slate-800/95 backdrop-blur border border-amber-500/40 p-3 rounded-xl shadow-2xl z-30 max-w-[200px] w-full flex flex-col gap-2">
             <div class="flex justify-between items-center border-b border-slate-700 pb-1.5">
                 <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400">Host Controller</span>
