@@ -1,0 +1,42 @@
+html { 
+    scroll-behavior: smooth; 
+}
+
+.section-card { 
+    cursor: pointer; 
+    transition: all 0.2s ease-in-out; 
+}
+
+.chord-lyrics-pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
+}
+
+.chord-line {
+    color: #f59e0b;
+    font-weight: bold;
+}
+
+.clickable-chord {
+    color: #38bdf8;
+    cursor: pointer;
+    text-decoration: underline dotted;
+}
+
+.clickable-chord:hover {
+    color: #7dd3fc;
+    background-color: rgba(56, 189, 248, 0.1);
+}
+
+@keyframes glowing {
+    0% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.2), inset 0 0 5px rgba(16, 185, 129, 0.1); }
+    50% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.6), inset 0 0 12px rgba(16, 185, 129, 0.3); }
+    100% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.2), inset 0 0 5px rgba(16, 185, 129, 0.1); }
+}
+
+.host-sync-glow {
+    animation: glowing 2.5s infinite;
+    border-color: rgba(16, 185, 129, 0.8) !important;
+}
