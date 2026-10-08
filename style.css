@@ -19,16 +19,49 @@ html {
     font-weight: bold;
 }
 
+/* Clickable & Hoverable Chord Container */
+.chord-tooltip-container {
+    position: relative;
+    display: inline-block;
+}
+
 .clickable-chord {
     color: #38bdf8;
     cursor: pointer;
     text-decoration: underline dotted;
-    padding: 2px 4px;
+    padding: 1px 3px;
     border-radius: 4px;
 }
 .clickable-chord:hover {
     color: #7dd3fc;
     background-color: rgba(56, 189, 248, 0.2);
+}
+
+/* Floating Tooltip Box para sa Chord Diagram */
+.chord-tooltip {
+    visibility: hidden;
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+    padding: 8px 12px;
+    border-radius: 8px;
+    z-index: 100;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    white-space: pre;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    pointer-events: none;
+}
+
+.chord-tooltip-container:hover .chord-tooltip {
+    visibility: visible;
+    opacity: 1;
 }
 
 @keyframes glowing {
